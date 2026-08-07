@@ -59,3 +59,26 @@ test('非法答案和配额不足被拒绝', async () => {
   const invalid = await json(`/api/attempts/${created.body.id}/responses/1`, { method: 'PUT', headers: { 'X-Attempt-Token': created.body.token }, body: JSON.stringify({ emotion: '不存在', strength: 9 }) });
   assert.equal(invalid.response.status, 400);
 });
+
+test('管理员可删除未使用题目和整份答卷，历史题目受保护', async () => {
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const cookie = login.response.headers.get('set-cookie').split(';')[0];
+  const adminHeaders = { Cookie: cookie };
+  const createdQuestion = await json('/api/admin/questions', {
+    method: 'POST',
+    headers: adminHeaders,
+    body: JSON.stringify({ modality: 'text', option_type: 'single', question_type: 'recognition', points: 100, title: '待删除题目', context: '测试情境', prompt: '测试问题', options: ['快乐', '悲伤'], correct_emotions: ['快乐'], standard_strengths: [3], difficulty: 'easy' })
+  });
+  assert.equal(createdQuestion.response.status, 201);
+  assert.equal((await json(`/api/admin/questions/${createdQuestion.body.id}`, { method: 'DELETE', headers: adminHeaders })).response.status, 200);
+  assert.equal((await json(`/api/admin/questions/${createdQuestion.body.id}`, { method: 'DELETE', headers: adminHeaders })).response.status, 404);
+
+  const attempt = await json('/api/attempts', { method: 'POST', body: '{}' });
+  const records = await json('/api/admin/attempts', { headers: adminHeaders });
+  assert.ok(records.body.some(record => record.public_id === attempt.body.id && record.status === 'in_progress'));
+  const questions = await json('/api/admin/questions', { headers: adminHeaders });
+  const referencedQuestionId = questions.body[0].id;
+  assert.equal((await json(`/api/admin/questions/${referencedQuestionId}`, { method: 'DELETE', headers: adminHeaders })).response.status, 409);
+  assert.equal((await json(`/api/admin/attempts/${attempt.body.id}`, { method: 'DELETE', headers: adminHeaders })).response.status, 200);
+  assert.equal((await json(`/api/admin/attempts/${attempt.body.id}`, { headers: adminHeaders })).response.status, 404);
+});
