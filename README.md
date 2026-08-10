@@ -23,6 +23,8 @@ npm start
 
 如需在空题库中生成 5 道演示题，启动时显式设置 `SEED_DEMO_DATA=true`。生产环境不要设置该变量，否则清空题库后重启会再次生成演示题。
 
+报告页支持 OpenAI-compatible 大模型反馈。复制 `.env.example` 为 `.env`，填写 `LLM_API_KEY`、`LLM_BASE_URL` 和 `LLM_MODEL` 后重启服务即可启用；密钥仅由服务端读取。未配置时系统自动使用本地规则反馈。
+
 ## 数据目录
 
 - `data/emotion.sqlite`：题库、答卷、评分结果和管理员账号
@@ -61,7 +63,7 @@ Group=www-data
 WantedBy=multi-user.target
 ```
 
-也可使用 `pm2 start server.js --name emotion-test`。生产环境必须设置 `NODE_ENV=production`，并通过 HTTPS 访问，否则安全 Cookie 不会发送。
+也可使用 `pm2 start server.js --name emotion-test`。`COOKIE_SECURE=auto` 会根据请求是 HTTP 还是 HTTPS 自动设置登录 Cookie；使用 Nginx 代理 HTTPS 时须保留下方的 `X-Forwarded-Proto` 配置。仅在必须强制限制协议时，将其显式设置为 `true`（仅 HTTPS）或 `false`（允许 HTTP）。
 
 ### Nginx
 

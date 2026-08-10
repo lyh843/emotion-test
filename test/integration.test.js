@@ -7,9 +7,12 @@ const os = require('os');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'zhijing-test-'));
 process.env.DATA_DIR = path.join(temp, 'data');
 process.env.UPLOAD_DIR = path.join(temp, 'uploads');
+process.env.NODE_ENV = 'test';
 process.env.SESSION_SECRET = 'integration-test-secret';
 process.env.ADMIN_PASSWORD = 'integration-test-password';
 process.env.SEED_DEMO_DATA = 'true';
+process.env.LLM_API_KEY = '';
+process.env.LLM_MODEL = '';
 const { app, db } = require('../server');
 let server, base;
 
@@ -54,12 +57,29 @@ test('匿名测评可保存、恢复、评分，且不可重复提交', async ()
   assert.equal(duplicate.response.status, 409);
   const report = await json(`/api/attempts/${created.body.id}/report`, { headers: auth });
   assert.equal(report.body.average_response_ms, 1000);
+  assert.deepEqual(report.body.by_question_type, { recognition: 100, reasoning: null });
+  assert.deepEqual(report.body.recognition_details, { label: 100, strength: 100 });
+  assert.deepEqual(report.body.sample_sizes.question_types, { recognition: 5, reasoning: 0 });
+  assert.deepEqual({ earned: report.body.earned_points, maximum: report.body.max_points }, { earned: 500, maximum: 500 });
+  const feedback = await json(`/api/attempts/${created.body.id}/feedback`, { method: 'POST', headers: auth, body: JSON.stringify({ style: 'warm' }) });
+  assert.equal(feedback.response.status, 200);
+  assert.equal(feedback.body.source, 'local');
+  assert.equal(feedback.body.version, 2);
+  assert.ok(feedback.body.overview.length > 0);
+  assert.ok(feedback.body.recommendations.length > 0);
+  assert.ok(feedback.body.text.length <= 500);
+  const cachedFeedback = await json(`/api/attempts/${created.body.id}/feedback`, { method: 'POST', headers: auth, body: JSON.stringify({ style: 'warm' }) });
+  assert.equal(cachedFeedback.body.cached, true);
 });
 
 test('非法答案和配额不足被拒绝', async () => {
   const created = await json('/api/attempts', { method: 'POST', body: '{}' });
-  const invalid = await json(`/api/attempts/${created.body.id}/responses/1`, { method: 'PUT', headers: { 'X-Attempt-Token': created.body.token }, body: JSON.stringify({ emotion: '不存在', strength: 9 }) });
+  const auth = { 'X-Attempt-Token': created.body.token };
+  const invalid = await json(`/api/attempts/${created.body.id}/responses/1`, { method: 'PUT', headers: auth, body: JSON.stringify({ emotion: '不存在', strength: 9 }) });
   assert.equal(invalid.response.status, 400);
+  const incomplete = await json(`/api/attempts/${created.body.id}/submit`, { method: 'POST', headers: auth, body: '{}' });
+  assert.equal(incomplete.response.status, 400);
+  assert.deepEqual(incomplete.body.missing_positions, [1, 2, 3, 4, 5]);
 });
 
 test('管理员可删除未使用题目和整份答卷，历史题目受保护', async () => {
