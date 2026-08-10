@@ -68,7 +68,7 @@ test('管理员可删除未使用题目和整份答卷，历史题目受保护',
   const createdQuestion = await json('/api/admin/questions', {
     method: 'POST',
     headers: adminHeaders,
-    body: JSON.stringify({ modality: 'text', option_type: 'single', question_type: 'recognition', points: 12.5, title: '待删除题目', context: '测试情境', prompt: '测试问题', options: ['快乐'], correct_emotions: ['快乐'], standard_strengths: [3], difficulty: 'easy' })
+    body: JSON.stringify({ modality: 'text', option_type: 'single', question_type: 'recognition', points: 12.5, title: '待删除题目', prompt: '测试问题', options: ['快乐'], correct_emotions: ['快乐'], standard_strengths: [3], difficulty: 'easy' })
   });
   assert.equal(createdQuestion.response.status, 201);
   const questionList = await json('/api/admin/questions', { headers: adminHeaders });
