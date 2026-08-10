@@ -40,6 +40,7 @@ test('匿名测评可保存、恢复、评分，且不可重复提交', async ()
   const auth = { 'X-Attempt-Token': created.body.token };
   const attempt = await json(`/api/attempts/${created.body.id}`, { headers: auth });
   assert.equal(attempt.body.questions.length, 5);
+  assert.ok(attempt.body.questions.every(question => question.options.length === 10));
   const standards = { '下班后的沉默': ['悲伤',4], '小组讨论': ['不耐烦',3], '没有说出口的话': ['失落',3], '迟到的祝福': ['愧疚',4], '重逢时刻': ['惊喜',5] };
   for (const q of attempt.body.questions) {
     const [emotion, strength] = standards[q.title];
@@ -67,9 +68,11 @@ test('管理员可删除未使用题目和整份答卷，历史题目受保护',
   const createdQuestion = await json('/api/admin/questions', {
     method: 'POST',
     headers: adminHeaders,
-    body: JSON.stringify({ modality: 'text', option_type: 'single', question_type: 'recognition', points: 100, title: '待删除题目', context: '测试情境', prompt: '测试问题', options: ['快乐', '悲伤'], correct_emotions: ['快乐'], standard_strengths: [3], difficulty: 'easy' })
+    body: JSON.stringify({ modality: 'text', option_type: 'single', question_type: 'recognition', points: 12.5, title: '待删除题目', context: '测试情境', prompt: '测试问题', options: ['快乐'], correct_emotions: ['快乐'], standard_strengths: [3], difficulty: 'easy' })
   });
   assert.equal(createdQuestion.response.status, 201);
+  const questionList = await json('/api/admin/questions', { headers: adminHeaders });
+  assert.equal(questionList.body.find(question => question.id === createdQuestion.body.id).points, 12.5);
   assert.equal((await json(`/api/admin/questions/${createdQuestion.body.id}`, { method: 'DELETE', headers: adminHeaders })).response.status, 200);
   assert.equal((await json(`/api/admin/questions/${createdQuestion.body.id}`, { method: 'DELETE', headers: adminHeaders })).response.status, 404);
 
