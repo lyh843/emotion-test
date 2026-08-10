@@ -9,6 +9,7 @@ process.env.DATA_DIR = path.join(temp, 'data');
 process.env.UPLOAD_DIR = path.join(temp, 'uploads');
 process.env.SESSION_SECRET = 'integration-test-secret';
 process.env.ADMIN_PASSWORD = 'integration-test-password';
+process.env.SEED_DEMO_DATA = 'true';
 const { app, db } = require('../server');
 let server, base;
 

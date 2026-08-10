@@ -1,7 +1,26 @@
 const app = document.querySelector('#app');
 const sessionKey = 'zhijing_attempt';
-let current = null, questionIndex = 0, questionStarted = Date.now(), changes = 0;
+let current = null, questionIndex = 0, changes = 0;
+let timedQuestionPosition = null, activeElapsedMs = 0, activeSince = null;
 const icons = { image: '▧', text: '文', audio: '◉', video: '▶' };
+
+function canTrackTime() { return document.visibilityState === 'visible' && document.hasFocus(); }
+function resumeTiming() { if (timedQuestionPosition !== null && activeSince === null && canTrackTime()) activeSince = Date.now(); }
+function pauseTiming() { if (activeSince !== null) { activeElapsedMs += Math.max(0, Date.now() - activeSince); activeSince = null; } }
+function beginQuestionTiming(position) {
+  if (timedQuestionPosition !== position) {
+    pauseTiming();
+    timedQuestionPosition = position;
+    activeElapsedMs = 0;
+    changes = 0;
+  }
+  resumeTiming();
+}
+function currentElapsedMs() { return Math.round(activeElapsedMs + (activeSince === null ? 0 : Math.max(0, Date.now() - activeSince))); }
+function finishQuestionTiming() { pauseTiming(); timedQuestionPosition = null; activeElapsedMs = 0; activeSince = null; changes = 0; }
+document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' ? pauseTiming() : resumeTiming());
+window.addEventListener('blur', pauseTiming);
+window.addEventListener('focus', resumeTiming);
 
 async function api(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...(current ? { 'X-Attempt-Token': current.token } : {}), ...(options.headers || {}) } });
@@ -41,7 +60,7 @@ function strengthScale(emotion, value = 3) {
 function assessment() {
   if (!current?.data) return start();
   const q = current.data.questions[questionIndex]; q.emotions ||= []; q.strengths ||= [];
-  questionStarted = Date.now(); changes = 0;
+  beginQuestionTiming(q.position);
   const isMultiple = q.option_type === 'multiple';
   app.innerHTML = header() + `<main class="assessment-wrap"><div class="assessment-meta"><div><span class="question-kicker">${q.question_type === 'reasoning' ? '情绪推理' : '情绪识别'} · ${isMultiple ? '多选题' : '单选题'} · ${q.points} 分</span><h1>${q.title}</h1></div><span class="autosave">● 切题时自动保存</span></div><div class="progress-row"><div class="progress"><div style="width:${(questionIndex + 1) / current.data.questions.length * 100}%"></div></div><b>${String(questionIndex + 1).padStart(2, '0')} / ${String(current.data.questions.length).padStart(2, '0')}</b></div><article class="card question"><div class="question-type"><span>${icons[q.modality]} ${{ image: '图像', text: '文本', audio: '语音', video: '视频' }[q.modality]}素材</span><span>${isMultiple ? '可选 1–5 项' : '请选择 1 项'}</span></div><div class="stimulus"><div class="scene">${media(q)}<blockquote>${q.context}</blockquote><strong>${q.prompt}</strong></div></div><div class="answer-layout"><section class="answer-box"><div class="answer-title"><div><small>STEP 1</small><h3>选择情绪</h3></div><span>${isMultiple ? `已选 ${q.emotions.length}/5` : '单选'}</span></div><div class="emotions">${q.options.map(e => `<button class="emotion ${q.emotions.includes(e) ? 'selected' : ''}" data-emotion="${e}"><i></i>${e}</button>`).join('')}</div></section><section class="answer-box"><div class="answer-title"><div><small>STEP 2</small><h3>标注情绪强度</h3></div><span>1–5 级</span></div><div id="strengthList">${q.emotions.length ? q.emotions.map((e, i) => strengthScale(e, q.strengths[i] || 3)).join('') : '<div class="strength-empty">选择情绪后，在此分别标注强度</div>'}</div></section></div><div class="watched-row"><div><b>你是否看过该影视作品？</b><small>此信息仅用于分析素材熟悉度，不影响得分</small></div><div class="segmented"><button data-watched="true" class="${q.watched_source === 1 || q.watched_source === true ? 'active' : ''}">看过</button><button data-watched="false" class="${q.watched_source === 0 || q.watched_source === false ? 'active' : ''}">没看过</button></div></div><div class="question-actions"><button class="btn" id="previous" ${questionIndex === 0 ? 'disabled' : ''}>← 上一题</button><div><button class="btn ghost" id="skip">暂时跳过</button><button class="btn primary" id="next">${questionIndex === current.data.questions.length - 1 ? '提交测评' : '保存并下一题 →'}</button></div></div></article></main>`;
   document.querySelectorAll('[data-emotion]').forEach(button => button.onclick = () => { const e = button.dataset.emotion, index = q.emotions.indexOf(e); if (isMultiple) { if (index >= 0) { q.emotions.splice(index, 1); q.strengths.splice(index, 1); } else if (q.emotions.length < 5) { q.emotions.push(e); q.strengths.push(3); } else return toast('多选题最多选择 5 个情绪'); } else { q.emotions = [e]; q.strengths = [3]; } q.skipped = 0; changes++; assessment(); });
@@ -51,7 +70,9 @@ function assessment() {
 }
 async function save(skipped, direction) {
   const q = current.data.questions[questionIndex]; if (!skipped && !q.emotions.length) return toast('请至少选择一个情绪');
-  try { await api(`/api/attempts/${current.id}/responses/${q.position}`, { method: 'PUT', body: JSON.stringify({ emotions: q.emotions, strengths: q.strengths, watched_source: q.watched_source, skipped, response_time_ms: (q.response_time_ms || 0) + Date.now() - questionStarted, modification_count: (q.modification_count || 0) + changes }) }); q.skipped = skipped ? 1 : 0; if (direction < 0) questionIndex--; else if (questionIndex < current.data.questions.length - 1) questionIndex++; else return submit(); assessment(); } catch (error) { toast(error.message); }
+  const responseTime = (q.response_time_ms || 0) + currentElapsedMs();
+  const modificationCount = (q.modification_count || 0) + changes;
+  try { await api(`/api/attempts/${current.id}/responses/${q.position}`, { method: 'PUT', body: JSON.stringify({ emotions: q.emotions, strengths: q.strengths, watched_source: q.watched_source, skipped, response_time_ms: responseTime, modification_count: modificationCount }) }); q.response_time_ms = responseTime; q.modification_count = modificationCount; q.skipped = skipped ? 1 : 0; finishQuestionTiming(); if (direction < 0) questionIndex--; else if (questionIndex < current.data.questions.length - 1) questionIndex++; else return submit(); assessment(); } catch (error) { toast(error.message); }
 }
 async function submit() { try { await api(`/api/attempts/${current.id}/submit`, { method: 'POST', body: '{}' }); current.data.status = 'completed'; location.hash = 'report'; } catch (error) { toast(error.message); } }
 function scoreClass(n) { return n >= 85 ? '优秀' : n >= 70 ? '良好' : n >= 60 ? '尚可' : '需提升'; }

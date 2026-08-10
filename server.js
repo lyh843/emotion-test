@@ -65,6 +65,7 @@ function migrate() {
 function seed() {
   const username=process.env.ADMIN_USERNAME||'admin', password=process.env.ADMIN_PASSWORD||'admin123!';
   if (!db.prepare('SELECT id FROM admins LIMIT 1').get()) db.prepare('INSERT INTO admins(username,password_hash) VALUES(?,?)').run(username,hashPassword(password));
+  if (process.env.SEED_DEMO_DATA !== 'true') return;
   if (db.prepare('SELECT COUNT(*) n FROM questions').get().n) return;
   const options=JSON.stringify(['快乐','悲伤','愤怒','恐惧','惊喜','失落','愧疚','不耐烦']);
   const rows=[

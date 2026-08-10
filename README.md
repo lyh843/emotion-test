@@ -19,7 +19,9 @@ npm start
 - 管理后台：`http://localhost:3000/admin`
 - 管理员登录页：`http://localhost:3000/admin/login`
 
-首次启动会自动创建 SQLite 表、示例题目和初始管理员。务必在公网部署前修改 `SESSION_SECRET` 与 `ADMIN_PASSWORD`。如果未配置，开发环境默认账号为 `admin`、密码为 `admin123!`。
+首次启动会自动创建 SQLite 表和初始管理员。务必在公网部署前修改 `SESSION_SECRET` 与 `ADMIN_PASSWORD`。如果未配置，开发环境默认账号为 `admin`、密码为 `admin123!`。
+
+如需在空题库中生成 5 道演示题，启动时显式设置 `SEED_DEMO_DATA=true`。生产环境不要设置该变量，否则清空题库后重启会再次生成演示题。
 
 ## 数据目录
 
