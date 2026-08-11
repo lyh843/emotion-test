@@ -1,5 +1,9 @@
 const root = document.querySelector('#adminApp');
 let me = null, page = 'dashboard', questions = [], editing = null;
+const promptTemplates = {
+  single: '这张图片/视频中右边男生/女生表现了什么情绪？请选出你觉得最合适的1个情绪词并标出在本素材中它表现出的强度为多少？',
+  multiple: '这张图片/视频中右边男生/女生表现了什么情绪？请选出你认为所有展现出的情绪词并分别标出在本素材中它表现出的强度为多少？'
+};
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(options.headers || {}) } }); const data = await response.json().catch(() => ({})); if (!response.ok) throw Error(data.error || '请求失败'); return data; }
 function toast(message) { const node = document.querySelector('#toast'); node.textContent = message; node.classList.add('show'); setTimeout(() => node.classList.remove('show'), 2400); }
 function esc(value) { return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])); }
@@ -35,4 +39,16 @@ async function configPage() { const c = await api('/api/admin/config'); const gr
 async function attemptsPage() { const rows = await api('/api/admin/attempts'); layout(`<div class="page-head"><div><span class="eyebrow">RESPONSES</span><h1>答卷记录</h1><p>查看进行中和已完成的匿名答卷</p></div><a class="btn primary" href="/api/admin/attempts.csv">导出 CSV</a></div><div class="card table-card"><div class="table-wrap"><table class="table"><thead><tr><th>匿名编号</th><th>状态</th><th>开始 / 提交时间（北京时间）</th><th>综合分</th><th>标签分</th><th>强度分</th><th>用时</th><th></th></tr></thead><tbody>${rows.length ? rows.map(a => `<tr><td><b>${a.public_id}</b></td><td><span class="badge ${a.status === "completed" ? "" : "orange"}">${a.status === "completed" ? "已完成" : "进行中"}</span></td><td>${beijingTime(a.submitted_at || a.started_at)}</td><td><b class="score">${a.total_score ?? "—"}</b></td><td>${a.label_score ?? "—"}</td><td>${a.strength_score ?? "—"}</td><td>${a.status === "completed" ? Math.round(a.duration_ms / 1000) + " 秒" : "—"}</td><td><button class="btn detail" data-id="${a.public_id}">详情</button> <button class="btn danger delete-attempt" data-id="${a.public_id}">删除</button></td></tr>`).join('') : '<tr><td colspan="8" class="empty">暂无答卷记录</td></tr>'}</tbody></table></div></div>`); document.querySelectorAll('.detail').forEach(button => button.onclick = () => attemptDetail(button.dataset.id)); }
 async function attemptDetail(id) { try { const a = await api(`/api/admin/attempts/${id}`); document.body.insertAdjacentHTML('beforeend', `<div class="modal-backdrop" id="modal"><div class="modal detail-modal"><div class="modal-head"><div><span class="eyebrow">RESPONSE DETAIL</span><h2>答卷详情</h2><small>${a.public_id} · 综合得分 ${a.total_score}</small></div><button onclick="this.closest('.modal-backdrop').remove()">×</button></div><div class="table-wrap"><table class="table"><thead><tr><th>题号</th><th>题目</th><th>作答 / 标准</th><th>强度 / 标准</th><th>看过作品</th><th>得分</th><th>用时</th></tr></thead><tbody>${a.responses.map(r => `<tr><td>${r.position}</td><td>${r.title}<small>${r.modality}</small></td><td>${r.skipped ? '已跳过' : `${(r.emotions || [r.emotion].filter(Boolean)).join('、')} / ${(r.correct_emotions || [r.correct_emotion].filter(Boolean)).join('、')}`}</td><td>${r.skipped ? '—' : `${(r.strengths || [r.strength].filter(value => value !== undefined && value !== null)).join(' / ')} / ${(r.standard_strengths || [r.standard_strength].filter(value => value !== undefined && value !== null)).join(' / ')}`}</td><td>${r.watched_source === null ? '未填写' : r.watched_source ? '是' : '否'}</td><td>${r.total_score ?? 0}</td><td>${((r.response_time_ms || 0) / 1000).toFixed(1)}s</td></tr>`).join('')}</tbody></table></div></div></div>`); } catch (error) { toast(error.message); } }
 async function render() { try { if (!me) me = await api('/api/admin/me'); if (page === 'dashboard') await dashboard(); if (page === 'questions') await questionPage(); if (page === 'config') await configPage(); if (page === 'attempts') await attemptsPage(); } catch (error) { if (error.message === '请先登录') { me = null; login(); } else toast(error.message); } }
+const renderQuestionModal = questionModal;
+questionModal = function questionModalWithTemplates(q = {}) {
+  renderQuestionModal(q);
+  const promptInput = document.querySelector('[name="prompt"]');
+  promptInput.insertAdjacentHTML('beforebegin', `<div class="prompt-templates"><button type="button" data-prompt-template="single"><b>单选题模板</b><span>${esc(promptTemplates.single)}</span></button><button type="button" data-prompt-template="multiple"><b>多选题模板</b><span>${esc(promptTemplates.multiple)}</span></button></div>`);
+  promptInput.insertAdjacentHTML('afterend', '<small class="prompt-help">点击模板即可填入，之后仍可修改素材类型、人物位置和性别。</small>');
+  document.querySelectorAll('[data-prompt-template]').forEach(button => button.onclick = () => {
+    promptInput.value = promptTemplates[button.dataset.promptTemplate];
+    promptInput.focus();
+    promptInput.setSelectionRange(promptInput.value.length, promptInput.value.length);
+  });
+};
 render();
