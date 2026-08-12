@@ -1,6 +1,7 @@
 const app = document.querySelector('#app');
 const sessionKey = 'zhijing_attempt';
 const submissionKey = 'zhijing_submission';
+const consentKey = 'zhijing_informed_consent_v2';
 let current = null, questionIndex = 0, changes = 0;
 let timedQuestionPosition = null, activeElapsedMs = 0, activeSince = null;
 const icons = { image: '▧', text: '文', audio: '◉', video: '▶' };
@@ -32,6 +33,30 @@ async function api(url, options = {}) {
 function toast(message) { const node = document.querySelector('#toast'); node.textContent = message; node.classList.add('show'); setTimeout(() => node.classList.remove('show'), 2400); }
 function escapeHtml(value) { return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])); }
 function header() { return `<header class="topbar"><a class="brand" href="#home"><span class="brand-mark">知</span><span><b>知境</b><small>多模态情绪感知测评</small></span></a><nav class="topnav"><a href="#about">测评说明</a><a href="/admin">管理后台</a>${current ? `<span class="user"><span>匿</span>${current.id.slice(-8)}</span>` : ''}</nav></header>`; }
+function showInformedConsent() {
+  if (localStorage.getItem(consentKey) === 'accepted') return;
+  document.body.classList.add('consent-open');
+  document.body.insertAdjacentHTML('beforeend', `<div class="consent-backdrop" id="informedConsent"><section class="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="consentTitle"><header><span class="eyebrow">INFORMED CONSENT</span><h1 id="consentTitle">情绪感知能力测验知情同意书</h1><p>尊敬的参与者：您好！感谢您考虑参加“情绪感知能力测验”。在决定是否参加前，请仔细阅读以下内容。如对测验内容、数据使用方式或其他事项存在疑问，可在参加前通过文末联系方式咨询。是否参加完全由您自主决定。</p></header><div class="consent-content">
+    <section><h2>一、测验名称</h2><p>情绪感知能力测验</p></section>
+    <section><h2>二、测验目的</h2><p>本项目为团队开发的情绪感知能力测验项目，用于参加2026年第二届“厚粲杯”全国大学生心理与认知智能测评挑战赛（以下简称“厚粲杯”），并对所开发的测验工具进行初步的测量学检验。</p><p>通过收集参与者在测验中的作答数据，团队将对测验的作答情况及相关测量指标进行分析，以了解测验的表现，并进一步开展测验工具的信度、效度等方面的分析，为后续完善情绪感知能力测验提供依据。</p><p>本测验属于科研及测验工具开发性质的项目，测验结果不用于心理疾病诊断，也不能替代专业的心理评估或临床诊断。</p></section>
+    <section><h2>三、测验内容与参与过程</h2><p>本次测验采用线上方式进行，预计需要10—15分钟完成。</p><p>测验过程中，您将接触不同形式的情绪材料，并根据材料完成相应的选择题。相关材料可能包括图片、文字、音频和视频等内容，您需要根据自己的判断对材料中所呈现的情绪进行识别并选择情绪的强度。</p><p>请按照测验指导语完成各项题目，并根据您对材料的真实判断进行作答。测验过程中无需提前准备相关知识。</p></section>
+    <section><h2>四、可能的风险与不适</h2><p>本测验属于低风险的心理学测验，一般不会造成身体伤害。由于部分测验材料涉及不同类型的情绪内容，个别材料可能使您产生短暂的情绪波动或轻微不适。如果您在测验过程中感到明显不适，可以选择暂停或退出测验。</p><p>参加本测验不会因为答题表现而受到任何评价、惩罚或其他不利影响。</p></section>
+    <section><h2>五、可能的获益</h2><p>参加本测验可能帮助您了解自己在本测验所涉及的情绪感知任务中的表现。同时，您的参与将为情绪感知能力测验工具的开发与完善提供数据支持，并有助于团队开展相关的测量学分析。</p><p>需要说明的是，本测验的结果仅反映您在本测验任务中的表现，不代表对您整体情绪能力或心理健康状况的全面评价。</p></section>
+    <section><h2>六、费用与报酬</h2><p>参加本次测验无需支付任何费用，本次测验亦不提供参与报酬。</p></section>
+    <section><h2>七、数据收集与隐私保护</h2><p>本测验不要求您提供姓名、联系方式、学号、专业等直接身份识别信息。</p><p>本项目将根据研究和测验分析需要收集与作答相关的数据，包括但不限于：</p><ul><li>性别；</li><li>各题选择情况及作答结果；</li><li>答题正确率等测验表现指标；</li><li>完成题目所用的答题时间等与测验过程相关的数据。</li></ul><p>上述数据将主要用于本项目的测验分析、测验工具的信度与效度分析，以及“厚粲杯”比赛项目的报告撰写和成果整理。团队将对所收集的数据进行合理的保密和安全管理。</p><p>由于本测验不要求收集姓名、联系方式等直接身份识别信息，团队在数据收集后可能无法根据个人身份准确定位某一参与者的数据。因此，如您在完成并提交测验后希望撤回数据，团队可能无法在不具备个人识别信息的情况下定位并删除对应数据。</p></section>
+    <section><h2>八、数据的使用与成果传播</h2><p>您所提供的数据将在本项目规定的用途范围内使用，主要包括：</p><ol><li>情绪感知能力测验工具的测量学分析，包括信度、效度等方面的分析；</li><li>“厚粲杯”比赛项目的数据分析及报告撰写；</li><li>与本项目相关的研究成果整理与展示。</li></ol><p>如相关研究成果以报告、论文、汇报或其他形式呈现，将以总体统计结果或经过处理的数据进行展示，而不会披露能够识别个人身份的信息。</p></section>
+    <section><h2>九、自愿参加与退出</h2><p>是否参加本次测验完全由您自主决定。您可以拒绝参加本次测验，也可以在测验过程中随时退出，无需说明理由。选择不参加或中途退出不会对您产生任何不利影响。</p><p>如果您在尚未提交测验的情况下退出，可以直接停止答题。</p></section>
+    <section><h2>十、疑问与联系方式</h2><p>如果您对本测验的目的、过程、数据使用、隐私保护或其他事项存在疑问，可以联系项目负责人进行咨询。</p><ul><li>电子邮箱：<a href="mailto:241820160@smail.nju.edu.cn">241820160@smail.nju.edu.cn</a></li><li>微信：19593121184</li></ul></section>
+    <section><h2>十一、同意声明</h2><p>在阅读并理解上述内容后，如您决定参加本次测验，即表示：</p><ul><li>您已经阅读并理解本知情同意书的主要内容；</li><li>您了解本测验的目的、过程、预计耗时、可能的风险与不适、可能的获益以及数据使用方式；</li><li>您知晓本测验为自愿参加，可以在任何阶段选择退出；</li><li>您了解本测验不会收集姓名、联系方式、专业等直接身份识别信息，并知晓所收集的测验数据可能用于测验工具的信度、效度等分析，以及“厚粲杯”比赛相关报告和成果整理；</li><li>您同意团队按照本知情同意书所说明的范围收集、分析和使用您的测验数据；</li><li>您确认在参加本测验前已有机会提出疑问，并可以通过上述联系方式获得进一步说明。</li></ul><p>如果您同意参加本次测验，请点击“同意并继续”。</p></section>
+  </div><footer><p>确认后，本浏览器将记住您对当前版本同意书的选择。</p><button class="btn primary" id="acceptConsent">同意并继续</button></footer></section></div>`);
+  const button = document.querySelector('#acceptConsent');
+  button.focus();
+  button.onclick = () => {
+    localStorage.setItem(consentKey, 'accepted');
+    document.querySelector('#informedConsent').remove();
+    document.body.classList.remove('consent-open');
+  };
+}
 
 function home() {
   app.innerHTML = header() + `<main class="content"><section class="hero"><div><div class="eyebrow">EMOTION PERCEPTION LAB</div><h1>从多模态线索，<br>理解情绪的<em>细微差别</em></h1><p>通过图像、文本、语音与视频情境，评估情绪识别和情绪推理能力。全程匿名，完成后即时获得分项反馈。</p><div class="actions"><button class="btn primary" id="start">${current?.completed ? '查看上次测评结果' : current ? '继续测评' : '开始匿名测评'} →</button><a class="btn" href="#about">了解作答方式</a></div>${current?.completed?'<p class="device-submitted">此浏览器已完成测评，再次进入将直接显示上次结果。</p>':''}<div class="trust-row"><span>✓ 匿名参与</span><span>✓ 即时报告</span><span>✓ 多模态题目</span></div></div><div class="hero-art"><div class="signal-card main-signal"><small>当前测评维度</small><strong>情绪感知</strong><div class="signal-wave"><i></i><i></i><i></i><i></i><i></i><i></i></div></div><span class="float-tag t1">图像 · 表情线索</span><span class="float-tag t2">语音 · 语调变化</span><span class="float-tag t3">文本 · 情境推理</span></div></section><div class="stats"><div class="stat"><small>能力维度</small><b>2</b><small>情绪识别与推理</small></div><div class="stat"><small>选项形式</small><b>单选 / 多选</b><small>适配复杂情绪场景</small></div><div class="stat"><small>素材模态</small><b>4</b><small>图文音视频融合</small></div><div class="stat"><small>隐私方式</small><b>匿名</b><small>不采集身份信息</small></div></div></main>`;
@@ -195,4 +220,4 @@ function printReport(r) {
 }
 function route() { ({ home, about, assessment, report, review: reviewPage }[location.hash.slice(1) || 'home'] || home)(); }
 try { current = JSON.parse(localStorage.getItem(submissionKey)) || JSON.parse(localStorage.getItem(sessionKey)); } catch {}
-window.addEventListener('hashchange', route); route();
+window.addEventListener('hashchange', route); route(); showInformedConsent();
