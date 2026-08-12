@@ -47,8 +47,9 @@ questionPage = async function questionPageWithMoreFilters(query = '') {
   await renderQuestionPage(query);
   const params = new URLSearchParams(query.replace(/^\?/, '')), status = document.querySelector('#qStatus');
   status.insertAdjacentHTML('beforebegin', '<select id="qOptionType"><option value="">全部选项形式</option><option value="single">单选题</option><option value="multiple">多选题</option></select><select id="qQuestionType"><option value="">全部能力类型</option><option value="recognition">情绪识别</option><option value="reasoning">情绪推理</option></select>');
-  qSearch.value = params.get('search') || ''; qMode.value = params.get('modality') || ''; qOptionType.value = params.get('option_type') || ''; qQuestionType.value = params.get('question_type') || ''; qStatus.value = params.get('status') || '';
-  document.querySelector('#filterQ').onclick = () => questionPage('?' + new URLSearchParams({ search: qSearch.value, modality: qMode.value, option_type: qOptionType.value, question_type: qQuestionType.value, status: qStatus.value }));
+  status.insertAdjacentHTML('afterend', '<select id="qSort"><option value="">最新录入优先</option><option value="title_asc">标题升序</option><option value="title_desc">标题降序</option></select>');
+  qSearch.value = params.get('search') || ''; qMode.value = params.get('modality') || ''; qOptionType.value = params.get('option_type') || ''; qQuestionType.value = params.get('question_type') || ''; qStatus.value = params.get('status') || ''; qSort.value = params.get('sort') || '';
+  document.querySelector('#filterQ').onclick = () => questionPage('?' + new URLSearchParams({ search: qSearch.value, modality: qMode.value, option_type: qOptionType.value, question_type: qQuestionType.value, status: qStatus.value, sort: qSort.value }));
 };
 questionModal = function questionModalWithTemplates(q = {}) {
   renderQuestionModal(q);
