@@ -1,5 +1,6 @@
 const app = document.querySelector('#app');
 const sessionKey = 'zhijing_attempt';
+const submissionKey = 'zhijing_submission';
 let current = null, questionIndex = 0, changes = 0;
 let timedQuestionPosition = null, activeElapsedMs = 0, activeSince = null;
 const icons = { image: '▧', text: '文', audio: '◉', video: '▶' };
@@ -33,7 +34,7 @@ function escapeHtml(value) { return String(value).replace(/[&<>"']/g, char => ({
 function header() { return `<header class="topbar"><a class="brand" href="#home"><span class="brand-mark">知</span><span><b>知境</b><small>多模态情绪感知测评</small></span></a><nav class="topnav"><a href="#about">测评说明</a><a href="/admin">管理后台</a>${current ? `<span class="user"><span>匿</span>${current.id.slice(-8)}</span>` : ''}</nav></header>`; }
 
 function home() {
-  app.innerHTML = header() + `<main class="content"><section class="hero"><div><div class="eyebrow">EMOTION PERCEPTION LAB</div><h1>从多模态线索，<br>理解情绪的<em>细微差别</em></h1><p>通过图像、文本、语音与视频情境，评估情绪识别和情绪推理能力。全程匿名，完成后即时获得分项反馈。</p><div class="actions"><button class="btn primary" id="start">${current ? '继续测评' : '开始匿名测评'} →</button><a class="btn" href="#about">了解作答方式</a></div><div class="trust-row"><span>✓ 匿名参与</span><span>✓ 即时报告</span><span>✓ 多模态题目</span></div></div><div class="hero-art"><div class="signal-card main-signal"><small>当前测评维度</small><strong>情绪感知</strong><div class="signal-wave"><i></i><i></i><i></i><i></i><i></i><i></i></div></div><span class="float-tag t1">图像 · 表情线索</span><span class="float-tag t2">语音 · 语调变化</span><span class="float-tag t3">文本 · 情境推理</span></div></section><div class="stats"><div class="stat"><small>能力维度</small><b>2</b><small>情绪识别与推理</small></div><div class="stat"><small>选项形式</small><b>单选 / 多选</b><small>适配复杂情绪场景</small></div><div class="stat"><small>素材模态</small><b>4</b><small>图文音视频融合</small></div><div class="stat"><small>隐私方式</small><b>匿名</b><small>不采集身份信息</small></div></div></main>`;
+  app.innerHTML = header() + `<main class="content"><section class="hero"><div><div class="eyebrow">EMOTION PERCEPTION LAB</div><h1>从多模态线索，<br>理解情绪的<em>细微差别</em></h1><p>通过图像、文本、语音与视频情境，评估情绪识别和情绪推理能力。全程匿名，完成后即时获得分项反馈。</p><div class="actions"><button class="btn primary" id="start">${current?.completed ? '查看上次测评结果' : current ? '继续测评' : '开始匿名测评'} →</button><a class="btn" href="#about">了解作答方式</a></div>${current?.completed?'<p class="device-submitted">此浏览器已完成测评，再次进入将直接显示上次结果。</p>':''}<div class="trust-row"><span>✓ 匿名参与</span><span>✓ 即时报告</span><span>✓ 多模态题目</span></div></div><div class="hero-art"><div class="signal-card main-signal"><small>当前测评维度</small><strong>情绪感知</strong><div class="signal-wave"><i></i><i></i><i></i><i></i><i></i><i></i></div></div><span class="float-tag t1">图像 · 表情线索</span><span class="float-tag t2">语音 · 语调变化</span><span class="float-tag t3">文本 · 情境推理</span></div></section><div class="stats"><div class="stat"><small>能力维度</small><b>2</b><small>情绪识别与推理</small></div><div class="stat"><small>选项形式</small><b>单选 / 多选</b><small>适配复杂情绪场景</small></div><div class="stat"><small>素材模态</small><b>4</b><small>图文音视频融合</small></div><div class="stat"><small>隐私方式</small><b>匿名</b><small>不采集身份信息</small></div></div></main>`;
   document.querySelector('#start').onclick = start;
 }
 function about() {
@@ -43,7 +44,7 @@ function about() {
 }
 async function start() {
   try {
-    if (current) { const attempt = await api(`/api/attempts/${current.id}`); if (attempt.status === 'completed') return void (location.hash = 'report'); current.data = attempt; }
+    if (current) { const attempt = await api(`/api/attempts/${current.id}`); if (attempt.status === 'completed') { current.completed = true; localStorage.setItem(submissionKey, JSON.stringify({ id: current.id, token: current.token, completed: true })); return void (location.hash = 'report'); } current.data = attempt; }
     else { current = await api('/api/attempts', { method: 'POST', body: '{}' }); localStorage.setItem(sessionKey, JSON.stringify(current)); current.data = await api(`/api/attempts/${current.id}`); }
     questionIndex = Math.max(0, current.data.questions.findIndex(q => !q.emotions?.length && !q.skipped)); location.hash = 'assessment';
   } catch (error) { toast(error.message); }
@@ -85,7 +86,7 @@ async function submit() {
     assessment();
     return;
   }
-  try { await api(`/api/attempts/${current.id}/submit`, { method: 'POST', body: '{}' }); current.data.status = 'completed'; location.hash = 'report'; } catch (error) { toast(error.message); }
+  try { await api(`/api/attempts/${current.id}/submit`, { method: 'POST', body: '{}' }); current.data.status = 'completed'; current.completed = true; localStorage.setItem(submissionKey, JSON.stringify({ id: current.id, token: current.token, completed: true })); location.hash = 'report'; } catch (error) { toast(error.message); }
 }
 function scoreClass(n) { return n >= 85 ? '优秀' : n >= 70 ? '良好' : n >= 60 ? '尚可' : '需提升'; }
 function radarChart(report) {
@@ -115,16 +116,83 @@ function bindFeedback() {
 async function report() {
   if (!current) return home();
   try {
-    const r = await api(`/api/attempts/${current.id}/report`);
+    const [r, review] = await Promise.all([api(`/api/attempts/${current.id}/report`), api(`/api/attempts/${current.id}/review`)]);
     const typeCounts = r.sample_sizes?.question_types || {}, cached = r.feedback_cache?.warm?.version === 2 ? r.feedback_cache.warm : null;
     const overview = escapeHtml(cached?.overview || '选择反馈风格并生成报告后，这里将结合综合得分、能力结构、素材模态和样本题量，对本次整体表现进行解释。');
     const recommendations = escapeHtml(cached?.recommendations || '系统会根据相对优势与薄弱维度提供下一步练习建议，模型生成内容总计不超过 500 字。');
     const recognitionRows = metricRow('情绪识别', r.by_question_type?.recognition, typeCounts.recognition || 0, '按识别类题目的分值加权') + metricRow('情绪推理', r.by_question_type?.reasoning, typeCounts.reasoning || 0, '按推理类题目的分值加权') + metricRow('标签识别', r.recognition_details?.label, typeCounts.recognition || 0, '情绪识别能力子项') + metricRow('强度判断', r.recognition_details?.strength, typeCounts.recognition || 0, '情绪识别能力子项');
-    app.innerHTML = header() + `<main class="content report-page"><div class="page-head"><div><span class="eyebrow">ASSESSMENT REPORT</span><h1>你的情绪感知报告</h1><p>匿名编号 ${current.id} · 共 ${r.sample_sizes?.total || 0} 题</p></div><button class="btn" onclick="window.print()">打印 / 保存 PDF</button></div><div class="report-hero card"><div><small>综合得分率</small><div class="overall-line"><strong>${r.overall}</strong><span>/100</span></div><em>${scoreClass(r.overall)} · ${r.earned_points ?? '—'} / ${r.max_points ?? '—'} 分</em></div><div class="report-method"><b>计分说明</b><p>综合得分率及各维度均按题目分值加权。图中 n 表示该维度包含的题目数；当 n 较小时，结果仅描述本次答题表现，不代表稳定能力或常模排名。</p><span>平均有效作答时间 ${((r.average_response_ms || 0) / 1000).toFixed(1)} 秒/题</span></div></div><div class="grid"><div class="card span7 chart-card"><div class="chart-title"><div><h3>多模态表现轮廓</h3><small>四轴雷达图 · 得分率 0–100%</small></div></div>${radarChart(r)}</div><div class="card span5 chart-card"><div class="chart-title"><div><h3>能力结构</h3><small>加权得分率与样本题数</small></div></div><div class="metric-list">${recognitionRows}</div></div><div class="card span12 feedback-card"><div class="feedback-head"><div><h3>AI 个性化报告</h3><small id="feedbackSource">${cached?.source === 'model' ? '由大语言模型生成' : '选择风格后生成'}</small></div><div class="feedback-tools"><select id="feedbackStyle"><option value="warm">温暖鼓励</option><option value="professional">专业分析</option><option value="concise">简洁直接</option></select><button class="btn primary" id="generateFeedback">生成完整报告</button></div></div><section class="narrative-block"><h4>整体表现解读</h4><p id="feedbackOverview">${overview}</p></section><section class="narrative-block advice"><h4>下一步建议</h4><p id="feedbackRecommendations">${recommendations}</p></section><div class="report-actions"><small>报告仅用于个人成长参考，不构成医学或心理诊断；没有常模时不提供百分位或人群比较。</small><button class="btn" id="newAttempt">开始新的测评</button></div></div></div></main>`;
+    app.innerHTML = header() + `<main class="content report-page"><div class="page-head"><div><span class="eyebrow">ASSESSMENT REPORT</span><h1>你的情绪感知报告</h1><p>匿名编号 ${current.id} · 共 ${r.sample_sizes?.total || 0} 题</p></div><button class="btn" onclick="window.print()">打印 / 保存 PDF</button></div><div class="report-hero card"><div><small>综合得分率</small><div class="overall-line"><strong>${r.overall}</strong><span>/100</span></div></div><div class="report-method"><b>计分说明</b><p>综合得分率及各维度均按题目分值加权。图中 n 表示该维度包含的题目数；当 n 较小时，结果仅描述本次答题表现，不代表稳定能力或常模排名。</p><span>平均有效作答时间 ${((r.average_response_ms || 0) / 1000).toFixed(1)} 秒/题</span></div></div><div class="grid"><div class="card span7 chart-card"><div class="chart-title"><div><h3>多模态表现轮廓</h3><small>四轴雷达图 · 得分率 0–100%</small></div></div>${radarChart(r)}</div><div class="card span5 chart-card"><div class="chart-title"><div><h3>能力结构</h3><small>加权得分率与样本题数</small></div></div><div class="metric-list">${recognitionRows}</div></div><div class="card span12 feedback-card"><div class="feedback-head"><div><h3>AI 个性化报告</h3><small id="feedbackSource">${cached?.source === 'model' ? '由大语言模型生成' : '选择风格后生成'}</small></div><div class="feedback-tools"><select id="feedbackStyle"><option value="warm">温暖鼓励</option><option value="professional">专业分析</option><option value="concise">简洁直接</option></select><button class="btn primary" id="generateFeedback">生成完整报告</button></div></div><section class="narrative-block"><h4>整体表现解读</h4><p id="feedbackOverview">${overview}</p></section><section class="narrative-block advice"><h4>下一步建议</h4><p id="feedbackRecommendations">${recommendations}</p></section><div class="report-actions"><small>报告仅用于个人成长参考，不构成医学或心理诊断；没有常模时不提供百分位或人群比较。</small><button class="btn" id="newAttempt">开始新的测评</button></div></div></div></main>`;
+    const answerText = (emotions, strengths) => emotions.map((emotion,index)=>`${escapeHtml(emotion)}（强度 ${strengths[index] ?? '—'}）`).join('、') || '未作答';
+    const reviewMedia = q => !q.media_url ? '' : q.modality === 'image' ? `<div class="review-media image-frame"><img src="${escapeHtml(q.media_url)}" alt="第 ${q.position} 题图片素材"></div>` : q.modality === 'audio' ? `<audio class="review-audio" controls preload="metadata" src="${escapeHtml(q.media_url)}"></audio>` : q.modality === 'video' ? `<div class="review-media video-frame"><video controls preload="metadata" src="${escapeHtml(q.media_url)}"></video></div>` : '';
+    document.querySelector('.feedback-card').insertAdjacentHTML('afterend', `<section class="card span12 review-card"><div class="review-head"><div><h3>逐题作答回顾</h3><p>查看本人作答、标准答案和单题表现；如对题目或标准答案有疑问，可匿名提交反馈。</p></div><span>${review.length} 道题</span></div><div class="review-list">${review.map(q=>`<article class="review-item"><div class="review-title"><span>第 ${q.position} 题 · ${escapeHtml(q.code)} · ${escapeHtml(q.title)}</span><b>${q.total_score ?? 0}%</b></div>${reviewMedia(q)}${q.context?`<p class="review-context">${escapeHtml(q.context)}</p>`:''}<p class="review-prompt">${escapeHtml(q.prompt)}</p><div class="review-answer-grid"><div><small>你的作答</small><strong>${answerText(q.emotions,q.strengths)}</strong></div><div><small>标准答案</small><strong>${answerText(q.correct_emotions,q.standard_strengths)}</strong></div><div><small>标签 / 强度得分率</small><strong>${q.label_score ?? 0}% / ${q.strength_score ?? 0}%</strong></div><div><small>本题用时</small><strong>${((q.response_time_ms||0)/1000).toFixed(1)} 秒</strong></div></div><div class="question-feedback"><textarea maxlength="1000" data-feedback-position="${q.position}" placeholder="可选：说明你认为题目、素材、候选情绪或标准答案存在的问题（5–1000字）">${escapeHtml(q.feedback||'')}</textarea><div><small>${q.feedback?`已提交 · ${q.feedback_status==='handled'?'后台已处理':'等待后台处理'}`:'反馈将与本题及匿名答卷编号关联'}</small><button class="btn feedback-submit" data-position="${q.position}">${q.feedback?'更新反馈':'提交反馈'}</button></div></div></article>`).join('')}</div></section>`);
+    document.querySelectorAll('.feedback-submit').forEach(button=>button.onclick=async()=>{const textarea=document.querySelector(`[data-feedback-position="${button.dataset.position}"]`),content=textarea.value.trim();if(content.length<5)return toast('请至少输入 5 个字符');button.disabled=true;try{await api(`/api/attempts/${current.id}/questions/${button.dataset.position}/feedback`,{method:'POST',body:JSON.stringify({content})});button.textContent='更新反馈';button.parentElement.querySelector('small').textContent='已提交 · 等待后台处理';toast('反馈已提交，谢谢你的意见')}catch(error){toast(error.message)}finally{button.disabled=false}});
+    document.querySelector('.review-card')?.remove();
+    document.querySelector('.report-page').insertAdjacentHTML('afterbegin', reportSideNav('report'));
+    const printButton = document.querySelector('[onclick="window.print()"]');
+    printButton.removeAttribute('onclick');
+    printButton.onclick = () => printReport(r);
     bindFeedback();
-    document.querySelector('#newAttempt').onclick = () => { localStorage.removeItem(sessionKey); current = null; location.hash = 'home'; };
+    const newAttempt = document.querySelector('#newAttempt'); newAttempt.textContent = '返回首页'; newAttempt.onclick = () => { location.hash = 'home'; };
   } catch (error) { toast(error.message); location.hash = 'home'; }
 }
-function route() { ({ home, about, assessment, report }[location.hash.slice(1) || 'home'] || home)(); }
-try { current = JSON.parse(localStorage.getItem(sessionKey)); } catch {}
+function reportSideNav(active) {
+  return `<nav class="report-side-nav" aria-label="报告页面导航"><a class="${active === 'report' ? 'active' : ''}" href="#report"><span>01</span>测评报告</a><a class="${active === 'review' ? 'active' : ''}" href="#review"><span>02</span>逐题回顾</a></nav>`;
+}
+function reviewAnswerText(emotions, strengths) {
+  return emotions.map((emotion, index) => `${escapeHtml(emotion)}（强度 ${strengths[index] ?? '—'}）`).join('、') || '未作答';
+}
+function reviewMedia(q) {
+  if (!q.media_url) return '';
+  if (q.modality === 'image') return `<div class="review-media image-frame"><img src="${escapeHtml(q.media_url)}" alt="第 ${q.position} 题图片素材"></div>`;
+  if (q.modality === 'audio') return `<audio class="review-audio" controls preload="metadata" src="${escapeHtml(q.media_url)}"></audio>`;
+  if (q.modality === 'video') return `<div class="review-media video-frame"><video controls preload="metadata" src="${escapeHtml(q.media_url)}"></video></div>`;
+  return '';
+}
+function reviewItems(review) {
+  return review.map(q => `<article class="review-item"><div class="review-title"><span>第 ${q.position} 题 · ${escapeHtml(q.code)} · ${escapeHtml(q.title)}</span><b>${q.total_score ?? 0}%</b></div>${reviewMedia(q)}${q.context ? `<p class="review-context">${escapeHtml(q.context)}</p>` : ''}<p class="review-prompt">${escapeHtml(q.prompt)}</p><div class="review-answer-grid"><div><small>你的作答</small><strong>${reviewAnswerText(q.emotions, q.strengths)}</strong></div><div><small>标准答案</small><strong>${reviewAnswerText(q.correct_emotions, q.standard_strengths)}</strong></div><div><small>标签 / 强度得分率</small><strong>${q.label_score ?? 0}% / ${q.strength_score ?? 0}%</strong></div><div><small>本题用时</small><strong>${((q.response_time_ms || 0) / 1000).toFixed(1)} 秒</strong></div></div><div class="question-feedback"><textarea maxlength="1000" data-feedback-position="${q.position}" placeholder="可选：说明你认为题目、素材、候选情绪或标准答案存在的问题（5–1000字）">${escapeHtml(q.feedback || '')}</textarea><div><small>${q.feedback ? `已提交 · ${q.feedback_status === 'handled' ? '后台已处理' : '等待后台处理'}` : '反馈将与本题及匿名答卷编号关联'}</small><button class="btn feedback-submit" data-position="${q.position}">${q.feedback ? '更新反馈' : '提交反馈'}</button></div></div></article>`).join('');
+}
+function bindReviewFeedback() {
+  document.querySelectorAll('.feedback-submit').forEach(button => button.onclick = async () => {
+    const textarea = document.querySelector(`[data-feedback-position="${button.dataset.position}"]`), content = textarea.value.trim();
+    if (content.length < 5) return toast('请至少输入 5 个字符');
+    button.disabled = true;
+    try {
+      await api(`/api/attempts/${current.id}/questions/${button.dataset.position}/feedback`, { method: 'POST', body: JSON.stringify({ content }) });
+      button.textContent = '更新反馈';
+      button.parentElement.querySelector('small').textContent = '已提交 · 等待后台处理';
+      toast('反馈已提交，谢谢你的意见');
+    } catch (error) { toast(error.message); }
+    finally { button.disabled = false; }
+  });
+}
+async function reviewPage() {
+  if (!current) return home();
+  try {
+    const review = await api(`/api/attempts/${current.id}/review`);
+    app.innerHTML = header() + `<main class="content report-page review-page">${reportSideNav('review')}<div class="page-head"><div><span class="eyebrow">ANSWER REVIEW</span><h1>逐题作答回顾</h1><p>查看本人作答、标准答案与单题表现，并可匿名反馈具体问题。</p></div><a class="btn" href="#report">返回测评报告</a></div><section class="card review-card"><div class="review-head"><div><h3>本次答题明细</h3><p>素材与答题时一致；强度、标签得分均按该题标准答案计算。</p></div><span>${review.length} 道题</span></div><div class="review-list">${reviewItems(review)}</div></section></main>`;
+    bindReviewFeedback();
+  } catch (error) { toast(error.message); location.hash = 'report'; }
+}
+function printReport(r) {
+  const popup = window.open('', '_blank');
+  if (!popup) return toast('浏览器阻止了报告窗口，请允许本站弹出窗口后重试');
+  popup.opener = null;
+  const overview = document.querySelector('#feedbackOverview')?.textContent.trim() || '尚未生成个性化解读。';
+  const recommendations = document.querySelector('#feedbackRecommendations')?.textContent.trim() || '尚未生成个性化建议。';
+  const rows = [
+    ['情绪识别', r.by_question_type?.recognition, r.sample_sizes?.question_types?.recognition],
+    ['情绪推理', r.by_question_type?.reasoning, r.sample_sizes?.question_types?.reasoning],
+    ['图像素材', r.by_modality?.image, r.sample_sizes?.modalities?.image],
+    ['文本素材', r.by_modality?.text, r.sample_sizes?.modalities?.text],
+    ['音频素材', r.by_modality?.audio, r.sample_sizes?.modalities?.audio],
+    ['视频素材', r.by_modality?.video, r.sample_sizes?.modalities?.video]
+  ].map(([label, value, count]) => `<tr><th>${label}</th><td>${value == null ? '暂无数据' : `${value}%`}</td><td>${count || 0} 题</td><td><i style="width:${Math.max(0, Math.min(100, Number(value) || 0))}%"></i></td></tr>`).join('');
+  const generatedAt = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'long', timeStyle: 'short' }).format(new Date());
+  const safeOverview = escapeHtml(overview).replace(/\n/g, '<br>'), safeRecommendations = escapeHtml(recommendations).replace(/\n/g, '<br>');
+  popup.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>情绪感知测评报告</title><style>@page{size:A4;margin:15mm}*{box-sizing:border-box}body{margin:0;color:#252621;font-family:"Microsoft YaHei",sans-serif;font-size:12px;line-height:1.75}header{padding:18px 22px;color:#fff;background:#292a27;border-radius:12px}header small{color:#f4ad68;letter-spacing:2px}header h1{margin:5px 0;font-size:25px}header p{margin:0;color:#d7d6d1}.score{display:grid;grid-template-columns:190px 1fr;gap:20px;margin:18px 0;padding:20px;border:1px solid #e8e2d8;border-radius:12px}.score strong{display:block;font-size:50px;color:#e87928;line-height:1;white-space:nowrap}.score strong span{font-size:16px;color:#777;white-space:nowrap}.score h2{margin:0 0 5px}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:15px 0}.metric{padding:12px;background:#f7f3ec;border-radius:8px}.metric b{display:block;font-size:20px;color:#d96f24}.metric small{color:#777}h2{font-size:17px;margin:20px 0 8px}.dimension{width:100%;border-collapse:collapse}.dimension th,.dimension td{padding:8px;border-bottom:1px solid #eee;text-align:left}.dimension th{width:90px}.dimension td:nth-child(2){width:75px;font-weight:700}.dimension td:nth-child(3){width:55px;color:#777}.dimension td:last-child{width:42%}.dimension i{display:block;height:7px;border-radius:9px;background:#e87928}.narrative{padding:13px 15px;border-left:3px solid #e87928;background:#faf8f4;page-break-inside:avoid}.narrative.advice{border-color:#6c9372}.note{margin-top:22px;padding-top:10px;border-top:1px solid #ddd;color:#777;font-size:10px}footer{position:fixed;bottom:0;color:#999;font-size:9px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body><header><small>EMOTION PERCEPTION ASSESSMENT</small><h1>情绪感知能力测评报告</h1><p>匿名答卷编号：${escapeHtml(String(current.id))}　｜　生成时间：${escapeHtml(generatedAt)}</p></header><section class="score"><div><small>综合得分率</small><strong>${r.overall}<span> / 100</span></strong></div><div><h2>${scoreClass(r.overall)}</h2><p>本次共完成 ${r.sample_sizes?.total || 0} 道题，获得 ${r.earned_points ?? '—'} / ${r.max_points ?? '—'} 分。结果按各题登记分值加权，用于描述本次作答表现。</p></div></section><div class="metrics"><div class="metric"><small>标签识别</small><b>${r.label ?? '—'}%</b></div><div class="metric"><small>强度判断</small><b>${r.strength ?? '—'}%</b></div><div class="metric"><small>平均有效用时</small><b>${((r.average_response_ms || 0) / 1000).toFixed(1)} 秒</b></div></div><h2>能力与素材维度</h2><table class="dimension">${rows}</table><h2>整体表现解读</h2><div class="narrative">${safeOverview}</div><h2>下一步建议</h2><div class="narrative advice">${safeRecommendations}</div><p class="note">说明：本报告仅用于个人成长与研究参考，不构成医学或心理诊断。维度题量较少时，结果可能受单题表现影响，不代表稳定能力、百分位或常模排名。逐题作答详情及问题反馈请在网页端“逐题回顾”中查看。</p><footer>知境 · 多模态情绪感知测评</footer></body></html>`);
+  popup.document.close();
+  setTimeout(() => { popup.focus(); popup.print(); }, 300);
+}
+function route() { ({ home, about, assessment, report, review: reviewPage }[location.hash.slice(1) || 'home'] || home)(); }
+try { current = JSON.parse(localStorage.getItem(submissionKey)) || JSON.parse(localStorage.getItem(sessionKey)); } catch {}
 window.addEventListener('hashchange', route); route();

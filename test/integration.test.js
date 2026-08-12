@@ -14,7 +14,7 @@ process.env.SEED_DEMO_DATA = 'true';
 process.env.LLM_API_KEY = '';
 process.env.LLM_MODEL = '';
 const { app, db } = require('../server');
-let server, base;
+let server, base, completedAttempt;
 
 test.before(async () => {
   await new Promise(resolve => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -81,6 +81,7 @@ test('匿名测评可保存、恢复、评分，且不可重复提交', async ()
     assert.equal(saved.response.status, 200);
   }
   const submitted = await json(`/api/attempts/${created.body.id}/submit`, { method: 'POST', headers: auth, body: '{}' });
+  completedAttempt = { ...created.body };
   assert.deepEqual({ overall: submitted.body.overall, label: submitted.body.label, strength: submitted.body.strength }, { overall: 100, label: 100, strength: 100 });
   const duplicate = await json(`/api/attempts/${created.body.id}/submit`, { method: 'POST', headers: auth, body: '{}' });
   assert.equal(duplicate.response.status, 409);
@@ -99,6 +100,11 @@ test('匿名测评可保存、恢复、评分，且不可重复提交', async ()
   assert.ok(feedback.body.text.length <= 500);
   const cachedFeedback = await json(`/api/attempts/${created.body.id}/feedback`, { method: 'POST', headers: auth, body: JSON.stringify({ style: 'warm' }) });
   assert.equal(cachedFeedback.body.cached, true);
+  const review = await json(`/api/attempts/${created.body.id}/review`, { headers: auth });
+  assert.equal(review.response.status, 200);
+  assert.equal(review.body.length, 5);
+  assert.ok(review.body.every(question => question.emotions.length && question.correct_emotions.length));
+  assert.ok(review.body.every(question => Object.hasOwn(question, 'media_url')));
 });
 
 test('非法答案和配额不足被拒绝', async () => {
@@ -175,4 +181,25 @@ test('数据分析仅汇总完成答卷并支持北京时间筛选和CSV', async
   const csvText = await csv.text();
   assert.match(csvText, /完全识别正确率/);
   assert.match(csvText, /样本不足/);
+});
+
+test('被试可逐题反馈且后台可接收并处理', async () => {
+  const attemptHeaders = { 'X-Attempt-Token': completedAttempt.token };
+  const created = await json(`/api/attempts/${completedAttempt.id}/questions/1/feedback`, { method: 'POST', headers: attemptHeaders, body: JSON.stringify({ content: '这道题的情景线索可能存在歧义。' }) });
+  assert.equal(created.response.status, 200);
+  assert.equal(created.body.status, 'pending');
+  const invalid = await json(`/api/attempts/${completedAttempt.id}/questions/2/feedback`, { method: 'POST', headers: attemptHeaders, body: JSON.stringify({ content: '短' }) });
+  assert.equal(invalid.response.status, 400);
+  const review = await json(`/api/attempts/${completedAttempt.id}/review`, { headers: attemptHeaders });
+  assert.equal(review.body[0].feedback, '这道题的情景线索可能存在歧义。');
+
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const adminHeaders = { Cookie: login.response.headers.get('set-cookie').split(';')[0] };
+  const feedback = await json('/api/admin/question-feedback?status=pending', { headers: adminHeaders });
+  assert.equal(feedback.body.length, 1);
+  assert.equal(feedback.body[0].public_id, completedAttempt.id);
+  const handled = await json(`/api/admin/question-feedback/${feedback.body[0].id}`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'handled' }) });
+  assert.equal(handled.response.status, 200);
+  const pending = await json('/api/admin/question-feedback?status=pending', { headers: adminHeaders });
+  assert.deepEqual(pending.body, []);
 });
