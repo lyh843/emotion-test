@@ -9,7 +9,26 @@ const promptTemplates = {
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(options.headers || {}) } }); const data = await response.json().catch(() => ({})); if (!response.ok) throw Error(data.error || '请求失败'); return data; }
 function toast(message) { const node = document.querySelector('#toast'); node.textContent = message; node.classList.add('show'); setTimeout(() => node.classList.remove('show'), 2400); }
 function esc(value) { return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])); }
+function fixed(value) { return value == null || value === '' || !Number.isFinite(Number(value)) ? '—' : Number(value).toFixed(2); }
 function beijingTime(value) { if (!value) return '—'; const date = new Date(`${String(value).replace(' ', 'T').replace(/Z$/, '')}Z`); if (Number.isNaN(date.getTime())) return esc(value); const parts = Object.fromEntries(new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(date).map(part => [part.type, part.value])); return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`; }
+function formatNumbersInText(node) { if (!node) return; const formatted = node.textContent.replace(/\d+(?:\.\d+)?/g, value => Number(value).toFixed(2)); if (formatted !== node.textContent) node.textContent = formatted; }
+function formatAdminNumbers() {
+  if (page === 'dashboard') formatNumbersInText(document.querySelector('.stats .stat:nth-child(3) b'));
+  if (page === 'questions') document.querySelectorAll('.table-card tbody tr').forEach(row => formatNumbersInText(row.children[3]));
+  if (page === 'attempts') document.querySelectorAll('.table-card tbody tr').forEach(row => [3, 4, 5].forEach(index => formatNumbersInText(row.children[index])));
+  if (page === 'analytics') {
+    document.querySelectorAll('.analytics-stats>div').forEach((card, index) => { if (index) formatNumbersInText(card.querySelector('b')); });
+    document.querySelectorAll('.dimension-item b').forEach(formatNumbersInText);
+    document.querySelectorAll('.dimension-item span').forEach(node => { node.textContent = node.textContent.replace(/平均用时 (\d+(?:\.\d+)?)s/, (_, value) => `平均用时 ${Number(value).toFixed(2)}s`); });
+    document.querySelectorAll('.analytics-table tbody tr').forEach(row => [3, 4, 5, 6].forEach(index => formatNumbersInText(row.children[index])));
+  }
+  document.querySelectorAll('.detail-modal').forEach(modal => {
+    const summary = modal.querySelector('.modal-head small');
+    if (summary) { const formatted = summary.textContent.replace(/(综合得分\s*)(\d+(?:\.\d+)?)/, (_, label, value) => `${label}${Number(value).toFixed(2)}`); if (formatted !== summary.textContent) summary.textContent = formatted; }
+    modal.querySelectorAll('tbody tr').forEach(row => [5, 6].forEach(index => formatNumbersInText(row.children[index])));
+  });
+}
+new MutationObserver(() => queueMicrotask(formatAdminNumbers)).observe(document.body, { childList: true, subtree: true });
 root.addEventListener('click', async event => {
   const questionButton = event.target.closest('.delete-question');
   const attemptButton = event.target.closest('.delete-attempt');
