@@ -149,3 +149,30 @@ test('题目支持保存多道双向冲突题', async () => {
   const invalid = await json(`/api/admin/questions/${target.id}`, { method: 'PUT', headers, body: JSON.stringify({ ...target, conflict_codes: ['ITEM-99999'] }) });
   assert.equal(invalid.response.status, 400);
 });
+
+test('数据分析仅汇总完成答卷并支持北京时间筛选和CSV', async () => {
+  assert.equal((await json('/api/admin/analytics')).response.status, 401);
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const headers = { Cookie: login.response.headers.get('set-cookie').split(';')[0] };
+  const before = await json('/api/admin/analytics?range=all', { headers });
+  assert.ok(before.body.summary.completed >= 1);
+  assert.equal(before.body.summary.average_score, 100);
+  assert.equal(before.body.distribution.find(bin => bin.label === '90–100').count, before.body.summary.completed);
+  assert.equal(before.body.questions.length, 5);
+  assert.ok(before.body.questions.every(question => /^ITEM-\d{5}$/.test(question.question_code)));
+  assert.ok(before.body.questions.every(question => question.sample_size >= 1 && question.low_sample === true));
+  assert.equal(before.body.dimensions.question_types.find(item => item.key === 'recognition').score, 100);
+
+  await json('/api/attempts', { method: 'POST', body: '{}' });
+  const after = await json('/api/admin/analytics?range=all', { headers });
+  assert.equal(after.body.summary.completed, before.body.summary.completed);
+  const outside = await json('/api/admin/analytics?from=2000-01-01&to=2000-01-01', { headers });
+  assert.equal(outside.body.summary.completed, 0);
+  assert.deepEqual(outside.body.questions, []);
+
+  const csv = await fetch(base + '/api/admin/analytics/questions.csv?range=all', { headers });
+  assert.equal(csv.status, 200);
+  const csvText = await csv.text();
+  assert.match(csvText, /完全识别正确率/);
+  assert.match(csvText, /样本不足/);
+});
