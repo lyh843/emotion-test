@@ -53,6 +53,17 @@ test('测评配置支持模态、选项形式和能力类型的精确组合', as
   assert.equal(saved.body.total_count, 5);
 });
 
+test('题库可按选项形式和能力类型组合筛选', async () => {
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const cookie = login.response.headers.get('set-cookie').split(';')[0];
+  const matching = await json('/api/admin/questions?option_type=single&question_type=recognition', { headers: { Cookie: cookie } });
+  assert.equal(matching.response.status, 200);
+  assert.equal(matching.body.length, 5);
+  assert.ok(matching.body.every(question => question.option_type === 'single' && question.question_type === 'recognition'));
+  const empty = await json('/api/admin/questions?option_type=multiple&question_type=reasoning', { headers: { Cookie: cookie } });
+  assert.deepEqual(empty.body, []);
+});
+
 test('匿名测评可保存、恢复、评分，且不可重复提交', async () => {
   const created = await json('/api/attempts', { method: 'POST', body: '{}' });
   assert.equal(created.response.status, 201);
