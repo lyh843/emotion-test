@@ -38,6 +38,21 @@ test('管理员接口需要登录，正确密码可建立会话', async () => {
   assert.match(login.response.headers.get('set-cookie'), /connect\.sid=/);
 });
 
+test('测评配置支持模态、选项形式和能力类型的精确组合', async () => {
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const cookie = login.response.headers.get('set-cookie').split(';')[0];
+  const config = await json('/api/admin/config', { headers: { Cookie: cookie } });
+  assert.equal(config.body.combination_counts.image_single_recognition, 2);
+  const combination_counts = Object.fromEntries(['image', 'text', 'audio', 'video'].flatMap(mode => ['single', 'multiple'].flatMap(option => ['recognition', 'reasoning'].map(kind => [`${mode}_${option}_${kind}`, 0]))));
+  combination_counts.image_single_recognition = 2;
+  combination_counts.text_single_recognition = 1;
+  combination_counts.audio_single_recognition = 1;
+  combination_counts.video_single_recognition = 1;
+  const saved = await json('/api/admin/config', { method: 'PUT', headers: { Cookie: cookie }, body: JSON.stringify({ combination_counts }) });
+  assert.equal(saved.response.status, 200);
+  assert.equal(saved.body.total_count, 5);
+});
+
 test('匿名测评可保存、恢复、评分，且不可重复提交', async () => {
   const created = await json('/api/attempts', { method: 'POST', body: '{}' });
   assert.equal(created.response.status, 201);

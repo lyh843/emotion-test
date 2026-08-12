@@ -72,6 +72,16 @@ function migrate() {
     `);
     db.prepare('INSERT INTO schema_migrations(version) VALUES(2)').run();
   })();
+  if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=3').get()) db.transaction(() => {
+    db.exec(`ALTER TABLE assessment_configs ADD COLUMN combination_counts_json TEXT;`);
+    const config=db.prepare('SELECT * FROM assessment_configs WHERE id=1').get(), combinations={};
+    for(const modality of ['image','text','audio','video'])for(const optionType of ['single','multiple'])for(const questionType of ['recognition','reasoning'])combinations[`${modality}_${optionType}_${questionType}`]=0;
+    const expanded=items=>items.flatMap(item=>Array(config[`${item}_count`]||0).fill(item));
+    const modeSlots=expanded(['image','text','audio','video']), optionSlots=expanded(['single','multiple']), kindSlots=expanded(['recognition','reasoning']);
+    modeSlots.forEach((modality,index)=>combinations[`${modality}_${optionSlots[index]}_${kindSlots[index]}`]++);
+    db.prepare('UPDATE assessment_configs SET combination_counts_json=? WHERE id=1').run(JSON.stringify(combinations));
+    db.prepare('INSERT INTO schema_migrations(version) VALUES(3)').run();
+  })();
   seed();
 }
 function seed() {
@@ -142,14 +152,24 @@ const storage=multer.diskStorage({destination:UPLOAD_DIR,filename:(req,file,cb)=
 const upload=multer({storage,limits:{fileSize:Math.max(Number(process.env.IMAGE_MAX_MB||10),Number(process.env.AUDIO_MAX_MB||30),Number(process.env.VIDEO_MAX_MB||100))*1024*1024},fileFilter:(req,file,cb)=>cb(null,/^(image|audio|video)\//.test(file.mimetype))});
 app.post('/api/admin/media',auth,upload.single('file'),(req,res)=>{if(!req.file)return res.status(400).json({error:'请选择有效的图片、音频或视频'});const type=req.file.mimetype.split('/')[0],limits={image:+(process.env.IMAGE_MAX_MB||10),audio:+(process.env.AUDIO_MAX_MB||30),video:+(process.env.VIDEO_MAX_MB||100)};if(req.file.size>limits[type]*1024*1024){fs.unlinkSync(req.file.path);return res.status(400).json({error:`${type} 文件不能超过 ${limits[type]}MB`})}const r=db.prepare('INSERT INTO media_files(original_name,stored_name,mime_type,size) VALUES(?,?,?,?)').run(req.file.originalname,req.file.filename,req.file.mimetype,req.file.size);res.status(201).json({id:r.lastInsertRowid,url:`/uploads/${req.file.filename}`})});
 app.delete('/api/admin/media/:id',auth,(req,res)=>{if(db.prepare('SELECT 1 FROM questions WHERE media_id=?').get(req.params.id))return res.status(409).json({error:'素材正在被题目使用'});const m=db.prepare('SELECT * FROM media_files WHERE id=?').get(req.params.id);if(!m)return res.status(404).json({error:'素材不存在'});db.prepare('DELETE FROM media_files WHERE id=?').run(m.id);fs.rmSync(path.join(UPLOAD_DIR,m.stored_name),{force:true});res.json({ok:true})});
-app.get('/api/admin/config',auth,(req,res)=>res.json(db.prepare('SELECT * FROM assessment_configs WHERE id=1').get()));
-app.put('/api/admin/config',auth,(req,res)=>{const modes=modalities.map(m=>Number(req.body[`${m}_count`])), choices=optionTypes.map(x=>Number(req.body[`${x}_count`])), kinds=questionTypes.map(x=>Number(req.body[`${x}_count`])), total=Number(req.body.total_count);if([...modes,...choices,...kinds].some(x=>!Number.isInteger(x)||x<0)||total<1||[modes,choices,kinds].some(group=>group.reduce((a,b)=>a+b,0)!==total))return res.status(400).json({error:'每组分类题量之和都必须等于总题量'});db.prepare('UPDATE assessment_configs SET total_count=?,image_count=?,text_count=?,audio_count=?,video_count=?,single_count=?,multiple_count=?,recognition_count=?,reasoning_count=?,updated_at=CURRENT_TIMESTAMP WHERE id=1').run(total,...modes,...choices,...kinds);res.json({ok:true})});
+function combinationCounts(config){try{return JSON.parse(config.combination_counts_json||'{}')}catch{return {}}}
+app.get('/api/admin/config',auth,(req,res)=>{const config=db.prepare('SELECT * FROM assessment_configs WHERE id=1').get();res.json({...config,combination_counts:combinationCounts(config)})});
+app.put('/api/admin/config',auth,(req,res)=>{
+  const combinations=req.body.combination_counts||{}, keys=modalities.flatMap(m=>optionTypes.flatMap(o=>questionTypes.map(q=>`${m}_${o}_${q}`)));
+  const values=keys.map(key=>Number(combinations[key]??0)), total=values.reduce((sum,value)=>sum+value,0);
+  if(values.some(value=>!Number.isInteger(value)||value<0)||total<1)return res.status(400).json({error:'每种题目组合数量必须为非负整数，且总题量不能为 0'});
+  const count=(index,value)=>keys.reduce((sum,key,i)=>sum+(key.split('_')[index]===value?values[i]:0),0);
+  const modes=modalities.map(value=>count(0,value)), choices=optionTypes.map(value=>count(1,value)), kinds=questionTypes.map(value=>count(2,value));
+  const stored=JSON.stringify(Object.fromEntries(keys.map((key,index)=>[key,values[index]])));
+  db.prepare('UPDATE assessment_configs SET total_count=?,image_count=?,text_count=?,audio_count=?,video_count=?,single_count=?,multiple_count=?,recognition_count=?,reasoning_count=?,combination_counts_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=1').run(total,...modes,...choices,...kinds,stored);
+  res.json({ok:true,total_count:total});
+});
 
 function selectQuestions(cfg){
   const pool=db.prepare('SELECT q.*,m.stored_name FROM questions q LEFT JOIN media_files m ON m.id=q.media_id WHERE q.published=1 ORDER BY RANDOM()').all();
-  const targets={};[...modalities,...optionTypes,...questionTypes].forEach(k=>targets[k]=cfg[`${k}_count`]);
-  function search(start,chosen,counts){if(chosen.length===cfg.total_count)return Object.keys(targets).every(k=>counts[k]===targets[k])?chosen:null;for(let i=start;i<pool.length;i++){const q=pool[i];if(counts[q.modality]>=targets[q.modality]||counts[q.option_type]>=targets[q.option_type]||counts[q.question_type]>=targets[q.question_type])continue;if(chosen.some(x=>x.conflict_code===q.code||q.conflict_code===x.code))continue;const next={...counts,[q.modality]:counts[q.modality]+1,[q.option_type]:counts[q.option_type]+1,[q.question_type]:counts[q.question_type]+1};const found=search(i+1,[...chosen,q],next);if(found)return found}return null}
-  return search(0,[],Object.fromEntries(Object.keys(targets).map(k=>[k,0])));
+  const targets=combinationCounts(cfg), keys=modalities.flatMap(m=>optionTypes.flatMap(o=>questionTypes.map(q=>`${m}_${o}_${q}`)));
+  function search(start,chosen,counts){if(chosen.length===cfg.total_count)return keys.every(key=>(counts[key]||0)===(targets[key]||0))?chosen:null;for(let i=start;i<pool.length;i++){const q=pool[i],key=`${q.modality}_${q.option_type}_${q.question_type}`;if((counts[key]||0)>=(targets[key]||0))continue;if(chosen.some(x=>x.conflict_code===q.code||q.conflict_code===x.code))continue;const found=search(i+1,[...chosen,q],{...counts,[key]:(counts[key]||0)+1});if(found)return found}return null}
+  return search(0,[],{});
 }
 app.post('/api/attempts',(req,res)=>{const cfg=db.prepare('SELECT * FROM assessment_configs WHERE id=1 AND active=1').get();if(!cfg)return res.status(503).json({error:'测评暂未开放'});const selected=selectQuestions(cfg);if(!selected)return res.status(503).json({error:'题库无法满足当前配额或冲突规则，请联系管理员'});selected.sort(()=>Math.random()-.5);const token=crypto.randomBytes(32).toString('base64url'),publicId=`ZJ${new Date().toISOString().slice(0,10).replace(/-/g,'')}${crypto.randomBytes(4).toString('hex').toUpperCase()}`;const create=db.transaction(()=>{const a=db.prepare('INSERT INTO attempts(public_id,token_hash,status) VALUES(?,?,?)').run(publicId,tokenHash(token),'in_progress');const ins=db.prepare(`INSERT INTO attempt_questions(attempt_id,question_id,position,modality_snapshot,title_snapshot,context_snapshot,prompt_snapshot,options_snapshot,correct_emotion_snapshot,standard_strength_snapshot,emotion_category_snapshot,media_url_snapshot,option_type_snapshot,question_type_snapshot,points_snapshot,correct_emotions_snapshot,standard_strengths_snapshot) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);selected.forEach((q,i)=>ins.run(a.lastInsertRowid,q.id,i+1,q.modality,q.title,q.context,q.prompt,JSON.stringify(buildAttemptOptions(q.options_json)),q.correct_emotion,q.standard_strength,q.emotion_category,q.stored_name?`/uploads/${q.stored_name}`:null,q.option_type,q.question_type,q.points,q.correct_emotions_json,q.standard_strengths_json));return a.lastInsertRowid});create();res.status(201).json({id:publicId,token})});
 function publicAttempt(a){const qs=db.prepare(`SELECT aq.id,aq.position,aq.modality_snapshot modality,aq.title_snapshot title,aq.context_snapshot context,aq.prompt_snapshot prompt,aq.options_snapshot options_json,aq.media_url_snapshot media_url,aq.option_type_snapshot option_type,aq.question_type_snapshot question_type,aq.points_snapshot points,r.emotion,r.strength,r.emotions_json,r.strengths_json,r.watched_source,r.skipped,r.response_time_ms,r.modification_count FROM attempt_questions aq LEFT JOIN responses r ON r.attempt_question_id=aq.id WHERE aq.attempt_id=? ORDER BY aq.position`).all(a.id).map(q=>({...q,options:JSON.parse(q.options_json),emotions:q.emotions_json?JSON.parse(q.emotions_json):(q.emotion?[q.emotion]:[]),strengths:q.strengths_json?JSON.parse(q.strengths_json):(q.strength?[q.strength]:[]),options_json:undefined,emotions_json:undefined,strengths_json:undefined}));return {id:a.public_id,status:a.status,started_at:a.started_at,submitted_at:a.submitted_at,total_score:a.total_score,questions:qs}}
