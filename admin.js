@@ -45,6 +45,7 @@ const renderQuestionModal = questionModal;
 const renderQuestionPage = questionPage;
 questionPage = async function questionPageWithMoreFilters(query = '') {
   await renderQuestionPage(query);
+  document.querySelectorAll('.table-card tbody tr').forEach((row,index) => { const cell=row.children[4]; if(cell)cell.textContent=questions[index]?.conflict_codes?.join('、') || '—'; });
   const params = new URLSearchParams(query.replace(/^\?/, '')), status = document.querySelector('#qStatus');
   status.insertAdjacentHTML('beforebegin', '<select id="qOptionType"><option value="">全部选项形式</option><option value="single">单选题</option><option value="multiple">多选题</option></select><select id="qQuestionType"><option value="">全部能力类型</option><option value="recognition">情绪识别</option><option value="reasoning">情绪推理</option></select>');
   status.insertAdjacentHTML('afterend', '<select id="qSort"><option value="">最新录入优先</option><option value="title_asc">标题升序</option><option value="title_desc">标题降序</option></select>');
@@ -52,7 +53,13 @@ questionPage = async function questionPageWithMoreFilters(query = '') {
   document.querySelector('#filterQ').onclick = () => questionPage('?' + new URLSearchParams({ search: qSearch.value, modality: qMode.value, option_type: qOptionType.value, question_type: qQuestionType.value, status: qStatus.value, sort: qSort.value }));
 };
 questionModal = function questionModalWithTemplates(q = {}) {
+  q = {...q,conflict_code:(q.conflict_codes || []).join('、') || q.conflict_code || ''};
   renderQuestionModal(q);
+  const conflictInput = document.querySelector('[name="conflict_code"]');
+  conflictInput.name = 'conflict_codes';
+  conflictInput.placeholder = 'ITEM-00001、ITEM-00008';
+  conflictInput.closest('.field').querySelector('label').textContent = '冲突题编号（可填写多道）';
+  conflictInput.insertAdjacentHTML('afterend', '<small class="prompt-help">多个编号使用顿号、逗号、空格或换行分隔。</small>');
   const promptInput = document.querySelector('[name="prompt"]'), questionType = document.querySelector('[name="question_type"]');
   promptInput.insertAdjacentHTML('beforebegin', '<div class="prompt-templates"></div>');
   promptInput.insertAdjacentHTML('afterend', '<small class="prompt-help">点击模板即可填入，之后仍可修改素材类型、人物位置和性别。</small>');

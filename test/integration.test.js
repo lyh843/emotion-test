@@ -135,3 +135,17 @@ test('管理员可删除未使用题目和整份答卷，历史题目受保护',
   assert.equal((await json(`/api/admin/attempts/${attempt.body.id}`, { method: 'DELETE', headers: adminHeaders })).response.status, 200);
   assert.equal((await json(`/api/admin/attempts/${attempt.body.id}`, { headers: adminHeaders })).response.status, 404);
 });
+
+test('题目支持保存多道双向冲突题', async () => {
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const headers = { Cookie: login.response.headers.get('set-cookie').split(';')[0] };
+  const listed = await json('/api/admin/questions?sort=title_asc', { headers });
+  const target = listed.body[0], conflicts = listed.body.slice(1, 3).map(question => question.code);
+  const updated = await json(`/api/admin/questions/${target.id}`, { method: 'PUT', headers, body: JSON.stringify({ ...target, conflict_codes: conflicts }) });
+  assert.equal(updated.response.status, 200);
+  const refreshed = await json('/api/admin/questions', { headers });
+  assert.deepEqual(refreshed.body.find(question => question.id === target.id).conflict_codes.sort(), [...conflicts].sort());
+  assert.ok(refreshed.body.find(question => question.code === conflicts[0]).conflict_codes.includes(target.code));
+  const invalid = await json(`/api/admin/questions/${target.id}`, { method: 'PUT', headers, body: JSON.stringify({ ...target, conflict_codes: ['ITEM-99999'] }) });
+  assert.equal(invalid.response.status, 400);
+});
