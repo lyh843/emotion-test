@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js",
-    "check": "node --check server.js && node --check app.js && node --check admin.js"
+    "check": "node --check server.js && node --check app.js && node --check admin.js && node --check scripts/update-question-points.js",
+    "questions:update-points": "node scripts/update-question-points.js"
   },
   "engines": { "node": ">=18" },
   "dependencies": {
