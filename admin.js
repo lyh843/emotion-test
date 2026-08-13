@@ -94,3 +94,9 @@ questionModal = function questionModalWithTemplates(q = {}) {
   renderTemplates();
 };
 render();
+const renderAnalyticsPage = analyticsPage;
+analyticsPage = async function analyticsPageWithLoading(params = new URLSearchParams({ range: 'all' })) {
+  const pageNode = root.querySelector('#page');
+  if (pageNode) pageNode.innerHTML = '<div class="card analytics-loading"><h3>正在汇总答卷数据…</h3><p>数据量较大时可能需要数秒，请稍候。</p></div>';
+  return renderAnalyticsPage(params);
+};
