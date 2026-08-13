@@ -28,7 +28,6 @@ function formatAdminNumbers() {
     modal.querySelectorAll('tbody tr').forEach(row => [5, 6].forEach(index => formatNumbersInText(row.children[index])));
   });
 }
-new MutationObserver(() => queueMicrotask(formatAdminNumbers)).observe(document.body, { childList: true, subtree: true });
 root.addEventListener('click', async event => {
   const questionButton = event.target.closest('.delete-question');
   const attemptButton = event.target.closest('.delete-attempt');
@@ -98,5 +97,12 @@ const renderAnalyticsPage = analyticsPage;
 analyticsPage = async function analyticsPageWithLoading(params = new URLSearchParams({ range: 'all' })) {
   const pageNode = root.querySelector('#page');
   if (pageNode) pageNode.innerHTML = '<div class="card analytics-loading"><h3>正在汇总答卷数据…</h3><p>数据量较大时可能需要数秒，请稍候。</p></div>';
-  return renderAnalyticsPage(params);
+  await renderAnalyticsPage(params);
+  formatAdminNumbers();
 };
+const renderDashboardPage = dashboard;
+dashboard = async function dashboardWithFixedNumbers() { await renderDashboardPage(); formatAdminNumbers(); };
+const renderAttemptsPage = attemptsPage;
+attemptsPage = async function attemptsWithFixedNumbers() { await renderAttemptsPage(); formatAdminNumbers(); };
+const renderAttemptDetail = attemptDetail;
+attemptDetail = async function attemptDetailWithFixedNumbers(id) { await renderAttemptDetail(id); formatAdminNumbers(); };
