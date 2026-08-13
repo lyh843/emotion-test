@@ -117,6 +117,18 @@ test('非法答案和配额不足被拒绝', async () => {
   assert.deepEqual(incomplete.body.missing_positions, [1, 2, 3, 4, 5]);
 });
 
+test('抽题记录历史入卷次数并用于低频题加权', async () => {
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const headers = { Cookie: login.response.headers.get('set-cookie').split(';')[0] };
+  const before = await json('/api/admin/questions', { headers });
+  assert.ok(before.body.every(question => Number.isInteger(question.appearance_count)));
+  const totalBefore = before.body.reduce((sum, question) => sum + question.appearance_count, 0);
+  assert.equal((await json('/api/attempts', { method: 'POST', body: '{}' })).response.status, 201);
+  const after = await json('/api/admin/questions', { headers });
+  const totalAfter = after.body.reduce((sum, question) => sum + question.appearance_count, 0);
+  assert.equal(totalAfter - totalBefore, 5);
+});
+
 test('管理员可删除未使用题目和整份答卷，历史题目受保护', async () => {
   const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
   const cookie = login.response.headers.get('set-cookie').split(';')[0];

@@ -70,7 +70,7 @@ const renderQuestionModal = questionModal;
 const renderQuestionPage = questionPage;
 questionPage = async function questionPageWithMoreFilters(query = '') {
   await renderQuestionPage(query);
-  document.querySelectorAll('.table-card tbody tr').forEach((row,index) => { const cell=row.children[4]; if(cell)cell.textContent=questions[index]?.conflict_codes?.join('、') || '—'; });
+  document.querySelectorAll('.table-card tbody tr').forEach((row,index) => { const question=questions[index],cell=row.children[4];if(cell)cell.textContent=question?.conflict_codes?.join('、') || '—';const titleCell=row.children[0];if(titleCell)titleCell.insertAdjacentHTML('beforeend',`<small>历史入卷 ${question?.appearance_count || 0} 次</small>`); });
   const params = new URLSearchParams(query.replace(/^\?/, '')), status = document.querySelector('#qStatus');
   status.insertAdjacentHTML('beforebegin', '<select id="qOptionType"><option value="">全部选项形式</option><option value="single">单选题</option><option value="multiple">多选题</option></select><select id="qQuestionType"><option value="">全部能力类型</option><option value="recognition">情绪识别</option><option value="reasoning">情绪推理</option></select>');
   status.insertAdjacentHTML('afterend', '<select id="qSort"><option value="">最新录入优先</option><option value="title_asc">标题升序</option><option value="title_desc">标题降序</option></select>');
