@@ -260,7 +260,8 @@ app.get('/api/admin/attempts.csv',auth,(req,res)=>{const f=attemptFilters(req.qu
 app.use('/uploads',express.static(UPLOAD_DIR,{maxAge:'7d',fallthrough:false}));
 app.get('/admin/login',(req,res)=>res.sendFile(path.join(ROOT,'admin.html'))); app.get('/admin',(req,res)=>res.sendFile(path.join(ROOT,'admin.html')));
 app.get('/',(req,res)=>res.sendFile(path.join(ROOT,'index.html')));
-for(const file of ['app.js','styles.css','media.css','admin.js','admin.css']) app.get(`/${file}`,(req,res)=>res.sendFile(path.join(ROOT,file)));
+for(const file of ['app.js','desktop.css','mobile.css','media.css','admin.js','admin.css']) app.get(`/${file}`,(req,res)=>res.sendFile(path.join(ROOT,file)));
 app.use((err,req,res,next)=>{console.error(`${new Date().toISOString()} ${req.method} ${req.path}: ${err.message}`);if(err instanceof multer.MulterError)return res.status(400).json({error:'上传文件过大或格式不正确'});res.status(500).json({error:'服务器处理失败'})});
-const port=Number(process.env.PORT||3000); if(require.main===module)app.listen(port,()=>console.log(`知境服务已启动: http://localhost:${port}`));
+const port=Number(process.env.PORT||3001), host=process.env.HOST||'127.0.0.1';
+if(require.main===module)app.listen(port,host,()=>console.log(`知境服务已启动: http://${host}:${port}`));
 module.exports={app,db,hashPassword};
