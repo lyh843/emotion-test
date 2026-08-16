@@ -146,6 +146,45 @@ test('匿名测评可保存、恢复、评分，且不可重复提交', async ()
   assert.ok(review.body.every(question => Object.hasOwn(question, 'media_url')));
 });
 
+test('答卷明细CSV完整导出多选情绪与对应强度', async () => {
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const adminHeaders = { Cookie: login.response.headers.get('set-cookie').split(';')[0] };
+  const originalConfig = await json('/api/admin/config', { headers: adminHeaders });
+  const createdQuestion = await json('/api/admin/questions', {
+    method: 'POST',
+    headers: adminHeaders,
+    body: JSON.stringify({ modality: 'text', option_type: 'multiple', question_type: 'recognition', points: 25, title: '多选导出验证', prompt: '选择两种情绪', options: ['快乐', '惊喜', '平静'], correct_emotions: ['快乐', '惊喜'], standard_strengths: [4, 5], difficulty: 'medium', published: true })
+  });
+  assert.equal(createdQuestion.response.status, 201);
+  const combination_counts = Object.fromEntries(Object.keys(originalConfig.body.combination_counts).map(key => [key, 0]));
+  combination_counts.text_multiple_recognition = 1;
+  assert.equal((await json('/api/admin/config', { method: 'PUT', headers: adminHeaders, body: JSON.stringify({ combination_counts }) })).response.status, 200);
+
+  const attempt = await json('/api/attempts', { method: 'POST', body: '{}' });
+  const attemptHeaders = { 'X-Attempt-Token': attempt.body.token };
+  const saved = await json(`/api/attempts/${attempt.body.id}/responses/1`, { method: 'PUT', headers: attemptHeaders, body: JSON.stringify({ emotions: ['快乐', '惊喜'], strengths: [4, 5], watched_source: false, response_time_ms: 12500, modification_count: 2 }) });
+  assert.equal(saved.response.status, 200);
+  assert.equal((await json(`/api/attempts/${attempt.body.id}/submit`, { method: 'POST', headers: attemptHeaders, body: '{}' })).response.status, 200);
+
+  const csv = await fetch(base + `/api/admin/attempts.csv?id=${attempt.body.id}`, { headers: adminHeaders });
+  assert.equal(csv.status, 200);
+  assert.match(csv.headers.get('content-disposition'), /filename\*=UTF-8''zhijing-attempt-details-/);
+  const csvBytes = new Uint8Array(await csv.arrayBuffer());
+  assert.deepEqual([...csvBytes.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+  const csvText = new TextDecoder().decode(csvBytes);
+  assert.match(csvText, /用户选择情绪/);
+  assert.match(csvText, /用户情绪强度/);
+  assert.match(csvText, /作答用时（秒）/);
+  assert.match(csvText, /"快乐｜惊喜"/);
+  assert.match(csvText, /"4｜5"/);
+  assert.match(csvText, /"多选题"/);
+  assert.match(csvText, /"12\.50"/);
+
+  assert.equal((await json('/api/admin/config', { method: 'PUT', headers: adminHeaders, body: JSON.stringify({ combination_counts: originalConfig.body.combination_counts }) })).response.status, 200);
+  assert.equal((await json(`/api/admin/attempts/${attempt.body.id}`, { method: 'DELETE', headers: adminHeaders })).response.status, 200);
+  assert.equal((await json(`/api/admin/questions/${createdQuestion.body.id}`, { method: 'DELETE', headers: adminHeaders })).response.status, 200);
+});
+
 test('非法答案和配额不足被拒绝', async () => {
   const created = await json('/api/attempts', { method: 'POST', body: '{}' });
   const auth = { 'X-Attempt-Token': created.body.token };
