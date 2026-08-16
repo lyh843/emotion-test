@@ -2,7 +2,7 @@ const app = document.querySelector('#app');
 const sessionKey = 'zhijing_attempt';
 const submissionKey = 'zhijing_submission';
 const consentKey = 'zhijing_informed_consent_v2';
-let current = null, questionIndex = 0, changes = 0;
+let current = null, questionIndex = 0, changes = 0, collectionActive = null;
 let timedQuestionPosition = null, activeElapsedMs = 0, activeSince = null;
 const icons = { image: '▧', text: '文', audio: '◉', video: '▶' };
 
@@ -60,20 +60,34 @@ function showInformedConsent() {
 }
 
 function home() {
-  app.innerHTML = header() + `<main class="content"><section class="hero"><div><div class="eyebrow">EMOTION PERCEPTION LAB</div><h1>从多模态线索，<br>理解情绪的<em>细微差别</em></h1><p>通过图像、文本、语音与视频情境，评估情绪识别和情绪推理能力。全程匿名，完成后即时获得分项反馈。</p><div class="actions"><button class="btn primary" id="start">${current?.completed ? '查看上次测评结果' : current ? '继续测评' : '开始匿名测评'} →</button><a class="btn" href="#about">了解作答方式</a></div>${current?.completed?'<p class="device-submitted">此浏览器已完成测评，再次进入将直接显示上次结果。</p>':''}<div class="trust-row"><span>✓ 匿名参与</span><span>✓ 即时报告</span><span>✓ 多模态题目</span></div></div><div class="hero-art"><div class="signal-card main-signal"><small>当前测评维度</small><strong>情绪感知</strong><div class="signal-wave"><i></i><i></i><i></i><i></i><i></i><i></i></div></div><span class="float-tag t1">图像 · 表情线索</span><span class="float-tag t2">语音 · 语调变化</span><span class="float-tag t3">文本 · 情境推理</span></div></section><div class="stats"><div class="stat"><small>能力维度</small><b>2</b><small>情绪识别与推理</small></div><div class="stat"><small>选项形式</small><b>单选 / 多选</b><small>适配复杂情绪场景</small></div><div class="stat"><small>素材模态</small><b>4</b><small>图文音视频融合</small></div><div class="stat"><small>隐私方式</small><b>匿名</b><small>不采集身份信息</small></div></div></main>`;
-  document.querySelector('#start').onclick = start;
+  const closed = !current && collectionActive === false;
+  app.innerHTML = header() + `<main class="content"><section class="hero"><div><div class="eyebrow">EMOTION PERCEPTION LAB</div><h1>从多模态线索，<br>理解情绪的<em>细微差别</em></h1><p>通过图像、文本、语音与视频情境，评估情绪识别和情绪推理能力。全程匿名，完成后即时获得分项反馈。</p>${closed?'<div class="collection-closed" role="status"><b>当前题目收集已满</b><span>感谢你的关注，本轮测评暂不再接收新的作答。</span></div>':''}<div class="actions"><button class="btn primary" id="start" ${closed?'disabled':''}>${closed?'作答已关闭':current?.completed ? '查看上次测评结果' : current ? '继续测评' : '开始匿名测评'}${closed?'':' →'}</button><a class="btn" href="#about">了解作答方式</a></div>${current?.completed?'<p class="device-submitted">此浏览器已完成测评，再次进入将直接显示上次结果。</p>':''}<div class="trust-row"><span>✓ 匿名参与</span><span>✓ 即时报告</span><span>✓ 多模态题目</span></div></div><div class="hero-art"><div class="signal-card main-signal"><small>当前测评维度</small><strong>情绪感知</strong><div class="signal-wave"><i></i><i></i><i></i><i></i><i></i><i></i></div></div><span class="float-tag t1">图像 · 表情线索</span><span class="float-tag t2">语音 · 语调变化</span><span class="float-tag t3">文本 · 情境推理</span></div></section><div class="stats"><div class="stat"><small>能力维度</small><b>2</b><small>情绪识别与推理</small></div><div class="stat"><small>选项形式</small><b>单选 / 多选</b><small>适配复杂情绪场景</small></div><div class="stat"><small>素材模态</small><b>4</b><small>图文音视频融合</small></div><div class="stat"><small>隐私方式</small><b>匿名</b><small>不采集身份信息</small></div></div></main>`;
+  if (!closed) document.querySelector('#start').onclick = start;
 }
 function about() {
+  const closed = !current && collectionActive === false;
   app.innerHTML = header() + `<main class="content guide-page"><div class="page-head guide-head"><div><span class="eyebrow">BEFORE YOU START</span><h1>测评说明</h1><p>请先完整阅读以下说明，了解测评目的、题目形式和作答方法后再开始</p></div></div><section class="card guide-intro"><div><span class="guide-chip">多模态 · 情境化 · 匿名</span><h2>这是一项怎样的测评？</h2><p>本测评关注你在日常社交情境中感知他人情绪的表现。题目使用图像、文本、语音和视频等生活化材料，要求你综合人物的面部表情、身体动作、说话内容、语气语调及前后情境，判断人物可能正在经历的情绪。</p><p>测评包含两个相互关联的能力方向：<b>情绪识别</b>是根据人物已经表现出来的线索判断其当前情绪；<b>情绪推理</b>是在互动关系和事件背景中，推断人物可能产生或即将产生的情绪反应。它考查的是具体题目中的判断表现，不是性格测试，也不用于医学或心理诊断。</p></div><div class="guide-summary"><div><b>4</b><span>图像、文本、语音、视频</span></div><div><b>2</b><span>情绪识别与情绪推理</span></div><div><b>1–5</b><span>情绪表现强度等级</span></div></div></section><section class="guide-section"><div class="section-copy"><span class="eyebrow">WHAT YOU WILL SEE</span><h2>你会遇到哪些题目？</h2><p>不同题目提供的线索不同。请以当前页面实际呈现的全部信息为准，不要只依赖某一个显眼线索。</p></div><div class="material-grid"><div class="card material-card"><i>▧</i><h3>图像题</h3><p>观察表情、目光、姿态、人物距离和场景信息，留意细微但一致的情绪线索。</p></div><div class="card material-card"><i>文</i><h3>文本题</h3><p>阅读对话与背景，结合措辞、停顿描述、言外之意和事件前因后果进行判断。</p></div><div class="card material-card"><i>♪</i><h3>语音题</h3><p>建议佩戴耳机，关注音量、语速、音高、停顿和语气变化，可在作答前充分听取素材。</p></div><div class="card material-card"><i>▶</i><h3>视频题</h3><p>完整观看人物互动和情绪变化过程，综合画面、动作、语言及时间顺序作答。</p></div></div></section><section class="guide-section"><div class="section-copy"><span class="eyebrow">HOW TO ANSWER</span><h2>每道题应该如何作答？</h2></div><div class="steps-list"><div class="card guide-step"><b>01</b><div><h3>完整阅读问题并确认目标人物</h3><p>先确认题目询问的是谁、哪个时刻以及需要进行情绪识别还是情绪推理。多人场景中不要把其他人物的情绪当作目标答案。</p></div></div><div class="card guide-step"><b>02</b><div><h3>完整查看素材和情景内容</h3><p>结合所有可用线索形成整体判断。音频和视频题请先完成播放；如题目提供情景内容，也应一并阅读。</p></div></div><div class="card guide-step"><b>03</b><div><h3>选择情绪词</h3><p><b>单选题</b>选择一个你认为最合适的情绪词；<b>多选题</b>选择你认为确实同时存在的全部情绪。不要为了“多选”而勉强增加缺乏线索的选项。</p></div></div><div class="card guide-step"><b>04</b><div><h3>分别判断情绪强度</h3><p>每个已选情绪都需要单独标注 1–5 级强度。强度表示该情绪在当前素材中的表现程度，而不是你本人看到素材后的感受。</p></div></div><div class="card guide-step"><b>05</b><div><h3>检查并保存作答</h3><p>确认情绪词和强度均已填写后进入下一题。系统会自动保存，你可以返回上一题检查或修改；最终提交前必须完成全部题目。</p></div></div></div></section><section class="guide-section guide-two"><div class="card strength-guide"><span class="eyebrow">INTENSITY SCALE</span><h2>如何理解 1–5 级强度？</h2><div class="scale-guide"><div><b>1</b><span>非常轻微</span><small>仅有隐约线索，情绪表现不明显</small></div><div><b>2</b><span>较弱</span><small>能够察觉，但表达仍较克制</small></div><div><b>3</b><span>中等</span><small>情绪清楚可辨，程度适中</small></div><div><b>4</b><span>较强</span><small>有明显且持续的表达线索</small></div><div><b>5</b><span>非常强烈</span><small>情绪高度突出，占据主要表现</small></div></div><p class="guide-note">请判断素材中人物实际展现的程度。情绪词选得合适但强度与素材差异较大，仍会影响该题表现。</p></div><div class="card answer-principles"><span class="eyebrow">ANSWERING PRINCIPLES</span><h2>作答时请注意</h2><ul><li>请根据第一手观察独立完成，不与他人讨论，也不要搜索素材来源或标准答案。</li><li>没有要求你猜测“研究者想要的答案”；请依据当前情境作出最符合你判断的选择。</li><li>不要仅凭单一表情判断。真实情绪可能由表情、语言、动作和情境共同呈现。</li><li>如果看过某段影视或视频素材，请如实填写观看经历；该信息用于辅助分析，不直接决定得分。</li><li>请认真作答，但不必在一道题上过度停留。无法完全确定时，选择证据最充分的答案。</li></ul></div></section><section class="card before-check"><div><span class="eyebrow">READY CHECK</span><h2>开始前的准备</h2></div><div class="check-grid"><p>✓ 选择安静、光线适宜且网络稳定的环境</p><p>✓ 语音和视频题建议使用耳机并调至舒适音量</p><p>✓ 预留连续时间，尽量不要中途切换页面或处理其他事务</p><p>✓ 使用较新的浏览器，手机端建议保持屏幕常亮</p></div></section><section class="card result-explain"><div><h2>计分、报告与隐私说明</h2><p>每道题同时考虑情绪标签判断和情绪强度判断，并结合题目登记分值形成综合结果。完成后可查看总体得分率、情绪识别与推理、不同素材模态以及标签和强度等分项表现。报告只解释本次作答数据；题量较少的维度应谨慎理解，不代表稳定能力、常模排名或人群比较。</p><p>系统以随机匿名编号保存答卷，不主动收集姓名、手机号或学号。作答选择、强度、用时和修改次数可能用于题目质量与研究分析。请勿在任何文本输入位置填写可识别个人身份的信息。</p></div><div class="result-warning"><b>重要提醒</b><span>本测评及其智能反馈仅供研究和个人成长参考，不构成心理咨询、疾病筛查、医学诊断或任何重要选拔决定。</span></div></section><div class="guide-start"><label><input type="checkbox" id="guideConfirm"> 我已阅读并理解测评目的、作答方法、计分与隐私说明</label><button class="btn primary" id="aboutStart" disabled>我已了解，开始测评 →</button></div></main>`;
-  document.querySelector('#guideConfirm').onchange = event => { document.querySelector('#aboutStart').disabled = !event.target.checked; };
-  document.querySelector('#aboutStart').onclick = start;
+  if (closed) {
+    const startArea = document.querySelector('.guide-start');
+    startArea.classList.add('closed');
+    startArea.innerHTML = '<div class="collection-closed" role="status"><b>当前题目收集已满</b><span>感谢你的关注，本轮测评暂不再接收新的作答。</span></div>';
+  } else {
+    document.querySelector('#guideConfirm').onchange = event => { document.querySelector('#aboutStart').disabled = !event.target.checked; };
+    document.querySelector('#aboutStart').onclick = start;
+  }
 }
 async function start() {
   try {
     if (current) { const attempt = await api(`/api/attempts/${current.id}`); if (attempt.status === 'completed') { current.completed = true; localStorage.setItem(submissionKey, JSON.stringify({ id: current.id, token: current.token, completed: true })); return void (location.hash = 'report'); } current.data = attempt; }
     else { current = await api('/api/attempts', { method: 'POST', body: '{}' }); localStorage.setItem(sessionKey, JSON.stringify(current)); current.data = await api(`/api/attempts/${current.id}`); }
     questionIndex = Math.max(0, current.data.questions.findIndex(q => !q.emotions?.length && !q.skipped)); location.hash = 'assessment';
-  } catch (error) { toast(error.message); }
+  } catch (error) {
+    if (!current && error.message === '当前题目收集已满') {
+      collectionActive = false;
+      if (location.hash === '#about') about(); else home();
+    }
+    toast(error.message);
+  }
 }
 function media(q) {
   if (q.media_url) {
@@ -237,4 +251,9 @@ function printReport(r) {
 }
 function route() { ({ home, about, assessment, report, review: reviewPage }[location.hash.slice(1) || 'home'] || home)(); }
 try { current = JSON.parse(localStorage.getItem(submissionKey)) || JSON.parse(localStorage.getItem(sessionKey)); } catch {}
-window.addEventListener('hashchange', route); route(); showInformedConsent();
+async function bootstrap() {
+  try { collectionActive = (await api('/api/assessment/status')).active; } catch { collectionActive = true; }
+  route();
+  if (current || collectionActive) showInformedConsent();
+}
+window.addEventListener('hashchange', route); bootstrap();

@@ -106,3 +106,19 @@ const renderAttemptsPage = attemptsPage;
 attemptsPage = async function attemptsWithFixedNumbers() { await renderAttemptsPage(); formatAdminNumbers(); };
 const renderAttemptDetail = attemptDetail;
 attemptDetail = async function attemptDetailWithFixedNumbers(id) { await renderAttemptDetail(id); formatAdminNumbers(); };
+const renderConfigPage = configPage;
+configPage = async function configPageWithCollectionStatus() {
+  await renderConfigPage();
+  const config = await api('/api/admin/config');
+  const open = !!config.active;
+  const form = document.querySelector('#configForm');
+  form.insertAdjacentHTML('beforebegin', `<section class="card collection-status-card ${open?'open':'closed'}"><div><span class="collection-status-badge">${open?'● 作答收集中':'● 作答已关闭'}</span><h2>${open?'当前允许创建新答卷':'当前题目收集已满'}</h2><p>${open?'关闭后，已经开始作答的参与者仍可继续并提交。':'新参与者无法开始；已有答卷不受影响。'}</p></div><button class="btn ${open?'danger':'primary'}" id="toggleCollection">${open?'关闭作答':'重新开放作答'}</button></section>`);
+  document.querySelector('#toggleCollection').onclick = async () => {
+    if (open && !confirm('确定关闭新作答吗？正在作答的参与者不会受到影响。')) return;
+    try {
+      await api('/api/admin/config/status', { method: 'PATCH', body: JSON.stringify({ active: !open }) });
+      toast(open ? '新作答已关闭' : '作答收集已开放');
+      await configPage();
+    } catch (error) { toast(error.message); }
+  };
+};

@@ -168,3 +168,4 @@ a { color: inherit; }
   .question-actions > div { grid-template-columns: 1fr; }
   .report-side-nav { position: static; }
 }
+.collection-closed{display:grid;gap:5px;margin:16px 0;padding:14px;border:1px solid #e8c8b3;border-radius:10px;background:#fff3e9;color:#6f4930}.collection-closed b{font-size:16px}.collection-closed span{font-size:12px;line-height:1.6}.guide-start.closed{display:block}.btn:disabled{cursor:not-allowed;opacity:.55}

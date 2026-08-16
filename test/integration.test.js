@@ -53,6 +53,45 @@ test('测评配置支持模态、选项形式和能力类型的精确组合', as
   assert.equal(saved.body.total_count, 5);
 });
 
+test('管理员可关闭新作答且不影响已创建答卷，并可重新开放', async () => {
+  const statusBefore = await json('/api/assessment/status');
+  assert.deepEqual(statusBefore.body, { active: true });
+  const existing = await json('/api/attempts', { method: 'POST', body: '{}' });
+  assert.equal(existing.response.status, 201);
+  const attemptHeaders = { 'X-Attempt-Token': existing.body.token };
+
+  const unauthorized = await json('/api/admin/config/status', { method: 'PATCH', body: JSON.stringify({ active: false }) });
+  assert.equal(unauthorized.response.status, 401);
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const adminHeaders = { Cookie: login.response.headers.get('set-cookie').split(';')[0] };
+  const invalid = await json('/api/admin/config/status', { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ active: 0 }) });
+  assert.equal(invalid.response.status, 400);
+  const closed = await json('/api/admin/config/status', { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ active: false }) });
+  assert.deepEqual(closed.body, { active: false });
+  assert.deepEqual((await json('/api/assessment/status')).body, { active: false });
+
+  const denied = await json('/api/attempts', { method: 'POST', body: '{}' });
+  assert.equal(denied.response.status, 503);
+  assert.equal(denied.body.error, '当前题目收集已满');
+  const resumed = await json(`/api/attempts/${existing.body.id}`, { headers: attemptHeaders });
+  assert.equal(resumed.response.status, 200);
+  const standards = { '下班后的沉默': ['悲伤',4], '小组讨论': ['不耐烦',3], '没有说出口的话': ['失落',3], '迟到的祝福': ['愧疚',4], '重逢时刻': ['惊喜',5] };
+  for (const question of resumed.body.questions) {
+    const [emotion, strength] = standards[question.title];
+    const saved = await json(`/api/attempts/${existing.body.id}/responses/${question.position}`, { method: 'PUT', headers: attemptHeaders, body: JSON.stringify({ emotion, strength }) });
+    assert.equal(saved.response.status, 200);
+  }
+  const submitted = await json(`/api/attempts/${existing.body.id}/submit`, { method: 'POST', headers: attemptHeaders, body: '{}' });
+  assert.equal(submitted.response.status, 200);
+
+  const config = await json('/api/admin/config', { headers: adminHeaders });
+  await json('/api/admin/config', { method: 'PUT', headers: adminHeaders, body: JSON.stringify({ combination_counts: config.body.combination_counts }) });
+  assert.deepEqual((await json('/api/assessment/status')).body, { active: false });
+  const reopened = await json('/api/admin/config/status', { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ active: true }) });
+  assert.deepEqual(reopened.body, { active: true });
+  assert.equal((await json('/api/attempts', { method: 'POST', body: '{}' })).response.status, 201);
+});
+
 test('题库可按选项形式和能力类型组合筛选', async () => {
   const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
   const cookie = login.response.headers.get('set-cookie').split(';')[0];
