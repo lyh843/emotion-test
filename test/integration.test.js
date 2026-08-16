@@ -229,9 +229,19 @@ test('数据分析仅汇总完成答卷并支持北京时间筛选和CSV', async
 
   const csv = await fetch(base + '/api/admin/analytics/questions.csv?range=all', { headers });
   assert.equal(csv.status, 200);
-  const csvText = await csv.text();
-  assert.match(csvText, /完全识别正确率/);
-  assert.match(csvText, /样本不足/);
+  assert.match(csv.headers.get('content-type'), /text\/csv/);
+  assert.match(csv.headers.get('content-disposition'), /filename\*=UTF-8''zhijing-question-analysis-/);
+  const csvBytes = new Uint8Array(await csv.arrayBuffer());
+  assert.deepEqual([...csvBytes.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+  const csvText = new TextDecoder().decode(csvBytes);
+  assert.match(csvText, /完全识别正确率（%）/);
+  assert.match(csvText, /平均用时（秒）/);
+  assert.match(csvText, /"图像"|"文本"|"音频"|"视频"/);
+  assert.match(csvText, /"情绪识别"/);
+  assert.match(csvText, /"单选题"/);
+  assert.match(csvText, /"100\.00"/);
+  assert.match(csvText, /样本不足（少于10份）/);
+  assert.doesNotMatch(csvText, /"image"|"recognition"|"single"/);
 });
 
 test('被试可逐题反馈且后台可接收并处理', async () => {
