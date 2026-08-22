@@ -74,6 +74,30 @@ test('测评配置支持识别与推理的独立边际配额和模态范围', as
   }
 });
 
+test('测试批次共享题库但隔离答卷、分析和题目入卷次数', async () => {
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const cookie = login.response.headers.get('set-cookie').split(';')[0];
+  const tests = await json('/api/admin/tests', { headers: { Cookie: cookie } });
+  const original = tests.body.find(item => item.code === 'DEFAULT');
+  const originalHeaders = { Cookie: cookie, 'X-Assessment-Test': String(original.id) };
+  const created = await json('/api/admin/tests', { method: 'POST', headers: originalHeaders, body: JSON.stringify({ name: '第二阶段测试' }) });
+  assert.equal(created.response.status, 201);
+  const newHeaders = { Cookie: cookie, 'X-Assessment-Test': String(created.body.id) };
+  const beforeOriginal = await json('/api/admin/questions', { headers: originalHeaders });
+  const attempt = await json('/api/attempts', { method: 'POST', body: JSON.stringify({ test_code: created.body.code }) });
+  assert.equal(attempt.response.status, 201);
+  const newAttempts = await json('/api/admin/attempts', { headers: newHeaders });
+  const originalAttempts = await json('/api/admin/attempts', { headers: originalHeaders });
+  assert.ok(newAttempts.body.some(item => item.public_id === attempt.body.id));
+  assert.ok(!originalAttempts.body.some(item => item.public_id === attempt.body.id));
+  const newQuestions = await json('/api/admin/questions', { headers: newHeaders });
+  const afterOriginal = await json('/api/admin/questions', { headers: originalHeaders });
+  assert.equal(newQuestions.body.reduce((sum,question)=>sum+question.appearance_count,0),5);
+  assert.equal(afterOriginal.body.reduce((sum,question)=>sum+question.appearance_count,0),beforeOriginal.body.reduce((sum,question)=>sum+question.appearance_count,0));
+  assert.equal((await json('/api/admin/analytics?range=all', { headers: newHeaders })).body.summary.completed,0);
+  assert.equal((await json(`/api/admin/attempts/${attempt.body.id}`, { method: 'DELETE', headers: newHeaders })).response.status,200);
+});
+
 test('管理员可关闭新作答且不影响已创建答卷，并可重新开放', async () => {
   const statusBefore = await json('/api/assessment/status');
   assert.deepEqual(statusBefore.body, { active: true });

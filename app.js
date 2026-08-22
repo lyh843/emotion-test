@@ -1,6 +1,7 @@
 const app = document.querySelector('#app');
-const sessionKey = 'zhijing_attempt';
-const submissionKey = 'zhijing_submission';
+const testCode = new URLSearchParams(location.search).get('test')?.trim().toUpperCase() || 'DEFAULT';
+const sessionKey = `zhijing_attempt_${testCode}`;
+const submissionKey = `zhijing_submission_${testCode}`;
 const consentKey = 'zhijing_informed_consent_v2';
 let current = null, questionIndex = 0, changes = 0, collectionActive = null;
 let timedQuestionPosition = null, activeElapsedMs = 0, activeSince = null;
@@ -79,7 +80,7 @@ function about() {
 async function start() {
   try {
     if (current) { const attempt = await api(`/api/attempts/${current.id}`); if (attempt.status === 'completed') { current.completed = true; localStorage.setItem(submissionKey, JSON.stringify({ id: current.id, token: current.token, completed: true })); return void (location.hash = 'report'); } current.data = attempt; }
-    else { current = await api('/api/attempts', { method: 'POST', body: '{}' }); localStorage.setItem(sessionKey, JSON.stringify(current)); current.data = await api(`/api/attempts/${current.id}`); }
+    else { current = await api('/api/attempts', { method: 'POST', body: JSON.stringify({ test_code: testCode }) }); localStorage.setItem(sessionKey, JSON.stringify(current)); current.data = await api(`/api/attempts/${current.id}`); }
     questionIndex = Math.max(0, current.data.questions.findIndex(q => !q.emotions?.length && !q.skipped)); location.hash = 'assessment';
   } catch (error) {
     if (!current && error.message === '当前题目收集已满') {
@@ -252,7 +253,7 @@ function printReport(r) {
 function route() { ({ home, about, assessment, report, review: reviewPage }[location.hash.slice(1) || 'home'] || home)(); }
 try { current = JSON.parse(localStorage.getItem(submissionKey)) || JSON.parse(localStorage.getItem(sessionKey)); } catch {}
 async function bootstrap() {
-  try { collectionActive = (await api('/api/assessment/status')).active; } catch { collectionActive = true; }
+  try { collectionActive = (await api(`/api/assessment/status?test=${encodeURIComponent(testCode)}`)).active; } catch { collectionActive = true; }
   route();
   if (current || collectionActive) showInformedConsent();
 }
