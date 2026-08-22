@@ -109,6 +109,10 @@ function migrate() {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_attempt_questions_question_id ON attempt_questions(question_id);`);
     db.prepare('INSERT INTO schema_migrations(version) VALUES(6)').run();
   })();
+  if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=7').get()) db.transaction(() => {
+    db.exec(`ALTER TABLE assessment_configs ADD COLUMN assessment_rules_json TEXT;`);
+    db.prepare('INSERT INTO schema_migrations(version) VALUES(7)').run();
+  })();
   seed();
 }
 function seed() {
@@ -185,25 +189,72 @@ const upload=multer({storage,limits:{fileSize:Math.max(Number(process.env.IMAGE_
 app.post('/api/admin/media',auth,upload.single('file'),(req,res)=>{if(!req.file)return res.status(400).json({error:'请选择有效的图片、音频或视频'});const type=req.file.mimetype.split('/')[0],limits={image:+(process.env.IMAGE_MAX_MB||10),audio:+(process.env.AUDIO_MAX_MB||30),video:+(process.env.VIDEO_MAX_MB||100)};if(req.file.size>limits[type]*1024*1024){fs.unlinkSync(req.file.path);return res.status(400).json({error:`${type} 文件不能超过 ${limits[type]}MB`})}const r=db.prepare('INSERT INTO media_files(original_name,stored_name,mime_type,size) VALUES(?,?,?,?)').run(req.file.originalname,req.file.filename,req.file.mimetype,req.file.size);res.status(201).json({id:r.lastInsertRowid,url:`/uploads/${req.file.filename}`})});
 app.delete('/api/admin/media/:id',auth,(req,res)=>{if(db.prepare('SELECT 1 FROM questions WHERE media_id=?').get(req.params.id))return res.status(409).json({error:'素材正在被题目使用'});const m=db.prepare('SELECT * FROM media_files WHERE id=?').get(req.params.id);if(!m)return res.status(404).json({error:'素材不存在'});db.prepare('DELETE FROM media_files WHERE id=?').run(m.id);fs.rmSync(path.join(UPLOAD_DIR,m.stored_name),{force:true});res.json({ok:true})});
 function combinationCounts(config){try{return JSON.parse(config.combination_counts_json||'{}')}catch{return {}}}
-app.get('/api/admin/config',auth,(req,res)=>{const config=db.prepare('SELECT * FROM assessment_configs WHERE id=1').get();res.json({...config,combination_counts:combinationCounts(config)})});
+function assessmentRules(config){try{return JSON.parse(config.assessment_rules_json||'null')}catch{return null}}
+app.get('/api/admin/config',auth,(req,res)=>{const config=db.prepare('SELECT * FROM assessment_configs WHERE id=1').get();res.json({...config,combination_counts:combinationCounts(config),assessment_rules:assessmentRules(config)})});
 app.patch('/api/admin/config/status',auth,(req,res)=>{
   if(typeof req.body.active!=='boolean')return res.status(400).json({error:'作答状态必须为布尔值'});
   db.prepare('UPDATE assessment_configs SET active=?,updated_at=CURRENT_TIMESTAMP WHERE id=1').run(req.body.active?1:0);
   res.json({active:req.body.active});
 });
 app.put('/api/admin/config',auth,(req,res)=>{
+  if(req.body.assessment_rules){
+    try{
+      const rules=normalizeAssessmentRules(req.body.assessment_rules), total=Object.values(rules).reduce((sum,rule)=>sum+rule.total,0);
+      const sum=(kind,field)=>Object.values(rules[kind][field]).reduce((value,count)=>value+(typeof count==='number'?count:count.min),0);
+      db.prepare(`UPDATE assessment_configs SET total_count=?,image_count=?,text_count=?,audio_count=?,video_count=?,single_count=?,multiple_count=?,recognition_count=?,reasoning_count=?,assessment_rules_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(total,...modalities.map(mode=>Object.values(rules).reduce((value,rule)=>value+rule.modality[mode].min,0)),...optionTypes.map(type=>Object.values(rules).reduce((value,rule)=>value+rule.option_type[type],0)),rules.recognition.total,rules.reasoning.total,JSON.stringify(rules));
+      return res.json({ok:true,total_count:total,assessment_rules:rules});
+    }catch(error){return res.status(400).json({error:error.message})}
+  }
   const combinations=req.body.combination_counts||{}, keys=modalities.flatMap(m=>optionTypes.flatMap(o=>questionTypes.map(q=>`${m}_${o}_${q}`)));
   const values=keys.map(key=>Number(combinations[key]??0)), total=values.reduce((sum,value)=>sum+value,0);
   if(values.some(value=>!Number.isInteger(value)||value<0)||total<1)return res.status(400).json({error:'每种题目组合数量必须为非负整数，且总题量不能为 0'});
   const count=(index,value)=>keys.reduce((sum,key,i)=>sum+(key.split('_')[index]===value?values[i]:0),0);
   const modes=modalities.map(value=>count(0,value)), choices=optionTypes.map(value=>count(1,value)), kinds=questionTypes.map(value=>count(2,value));
   const stored=JSON.stringify(Object.fromEntries(keys.map((key,index)=>[key,values[index]])));
-  db.prepare('UPDATE assessment_configs SET total_count=?,image_count=?,text_count=?,audio_count=?,video_count=?,single_count=?,multiple_count=?,recognition_count=?,reasoning_count=?,combination_counts_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=1').run(total,...modes,...choices,...kinds,stored);
+  db.prepare('UPDATE assessment_configs SET total_count=?,image_count=?,text_count=?,audio_count=?,video_count=?,single_count=?,multiple_count=?,recognition_count=?,reasoning_count=?,combination_counts_json=?,assessment_rules_json=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=1').run(total,...modes,...choices,...kinds,stored);
   res.json({ok:true,total_count:total});
 });
 
+function normalizeAssessmentRules(input){
+  const output={};
+  for(const kind of questionTypes){
+    const source=input[kind]||{}, total=Number(source.total), difficulty={}, option_type={}, modality={};
+    if(!Number.isInteger(total)||total<1)throw Error(`${kind==='recognition'?'识别':'推理'}题总数必须是正整数`);
+    for(const key of difficulties){const value=Number(source.difficulty?.[key]);if(!Number.isInteger(value)||value<0)throw Error('难度题量必须是非负整数');difficulty[key]=value}
+    for(const key of optionTypes){const value=Number(source.option_type?.[key]);if(!Number.isInteger(value)||value<0)throw Error('单多选题量必须是非负整数');option_type[key]=value}
+    for(const key of modalities){const value=source.modality?.[key]||{},min=Number(value.min),max=Number(value.max);if(!Number.isInteger(min)||!Number.isInteger(max)||min<0||max<min)throw Error('模态范围必须是有效的非负整数');modality[key]={min,max}}
+    if(Object.values(difficulty).reduce((a,b)=>a+b,0)!==total)throw Error(`${kind==='recognition'?'识别':'推理'}题的难度数量之和必须等于 ${total}`);
+    if(Object.values(option_type).reduce((a,b)=>a+b,0)!==total)throw Error(`${kind==='recognition'?'识别':'推理'}题的单多选数量之和必须等于 ${total}`);
+    const minimum=Object.values(modality).reduce((sum,value)=>sum+value.min,0),maximum=Object.values(modality).reduce((sum,value)=>sum+value.max,0);
+    if(minimum>total||maximum<total)throw Error(`${kind==='recognition'?'识别':'推理'}题的模态范围无法组成 ${total} 道题`);
+    output[kind]={total,difficulty,option_type,modality};
+  }
+  return output;
+}
+
 function selectQuestions(cfg){
   const pool=db.prepare(`SELECT q.*,m.stored_name,(SELECT COUNT(*) FROM attempt_questions aq WHERE aq.question_id=q.id) appearance_count,(SELECT GROUP_CONCAT(CASE WHEN qc.question_id=q.id THEN qc.conflicting_question_id ELSE qc.question_id END) FROM question_conflicts qc WHERE qc.question_id=q.id OR qc.conflicting_question_id=q.id) conflict_ids FROM questions q LEFT JOIN media_files m ON m.id=q.media_id WHERE q.published=1`).all().map(q=>({...q,conflictIds:new Set(String(q.conflict_ids||'').split(',').filter(Boolean).map(Number)),selectionRank:-Math.log(Math.max(Math.random(),Number.EPSILON))*(Number(q.appearance_count)+1)})).sort((a,b)=>a.selectionRank-b.selectionRank);
+  const rules=assessmentRules(cfg);
+  if(rules){
+    const chosen=[], chosenIds=new Set();
+    function selectKind(kind){
+      const rule=rules[kind], counts={difficulty:{},option_type:{},modality:{}};
+      const candidates=pool.filter(question=>question.question_type===kind);
+      function search(){
+        const selected=Object.values(counts.difficulty).reduce((sum,value)=>sum+value,0);
+        if(selected===rule.total)return difficulties.every(key=>(counts.difficulty[key]||0)===rule.difficulty[key])&&optionTypes.every(key=>(counts.option_type[key]||0)===rule.option_type[key])&&modalities.every(key=>(counts.modality[key]||0)>=rule.modality[key].min&&(counts.modality[key]||0)<=rule.modality[key].max);
+        const remaining=rule.total-selected;
+        for(const field of ['difficulty','option_type'])for(const key of Object.keys(rule[field]))if((counts[field][key]||0)>rule[field][key]||(counts[field][key]||0)+remaining<rule[field][key])return false;
+        for(const key of modalities)if((counts.modality[key]||0)>rule.modality[key].max||(counts.modality[key]||0)+remaining<rule.modality[key].min)return false;
+        const available=candidates.filter(question=>!chosenIds.has(question.id)&&!chosen.some(item=>question.conflictIds.has(item.id))&&(counts.difficulty[question.difficulty]||0)<rule.difficulty[question.difficulty]&&(counts.option_type[question.option_type]||0)<rule.option_type[question.option_type]&&(counts.modality[question.modality]||0)<rule.modality[question.modality].max);
+        available.sort((a,b)=>{const need=q=>(rule.difficulty[q.difficulty]-(counts.difficulty[q.difficulty]||0))+(rule.option_type[q.option_type]-(counts.option_type[q.option_type]||0))+(rule.modality[q.modality].min-(counts.modality[q.modality]||0));return need(b)-need(a)||a.selectionRank-b.selectionRank});
+        for(const question of available){chosen.push(question);chosenIds.add(question.id);for(const field of ['difficulty','option_type','modality'])counts[field][question[field]]=(counts[field][question[field]]||0)+1;if(search())return true;for(const field of ['difficulty','option_type','modality'])counts[field][question[field]]--;chosenIds.delete(question.id);chosen.pop()}
+        return false;
+      }
+      return search();
+    }
+    return selectKind('recognition')&&selectKind('reasoning')?chosen:null;
+  }
   const targets=combinationCounts(cfg), keys=modalities.flatMap(m=>optionTypes.flatMap(o=>questionTypes.map(q=>`${m}_${o}_${q}`)));
   function search(start,chosen,counts){if(chosen.length===cfg.total_count)return keys.every(key=>(counts[key]||0)===(targets[key]||0))?chosen:null;for(let i=start;i<pool.length;i++){const q=pool[i],key=`${q.modality}_${q.option_type}_${q.question_type}`;if((counts[key]||0)>=(targets[key]||0))continue;if(chosen.some(x=>q.conflictIds.has(x.id)))continue;const found=search(i+1,[...chosen,q],{...counts,[key]:(counts[key]||0)+1});if(found)return found}return null}
   return search(0,[],{});
@@ -284,4 +335,4 @@ for(const file of ['app.js','desktop.css','mobile.css','media.css','admin.js','a
 app.use((err,req,res,next)=>{console.error(`${new Date().toISOString()} ${req.method} ${req.path}: ${err.message}`);if(err instanceof multer.MulterError)return res.status(400).json({error:'上传文件过大或格式不正确'});res.status(500).json({error:'服务器处理失败'})});
 const port=Number(process.env.PORT||3001), host=process.env.HOST||'127.0.0.1';
 if(require.main===module)app.listen(port,host,()=>console.log(`知境服务已启动: http://${host}:${port}`));
-module.exports={app,db,hashPassword};
+module.exports={app,db,hashPassword,normalizeAssessmentRules,selectQuestions};

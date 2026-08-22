@@ -53,6 +53,27 @@ test('测评配置支持模态、选项形式和能力类型的精确组合', as
   assert.equal(saved.body.total_count, 5);
 });
 
+test('测评配置支持识别与推理的独立边际配额和模态范围', async () => {
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const headers = { Cookie: login.response.headers.get('set-cookie').split(';')[0] };
+  const original = await json('/api/admin/config', { headers });
+  const assessment_rules = {
+    recognition: { total: 18, difficulty: { easy: 5, medium: 9, hard: 4 }, option_type: { single: 7, multiple: 11 }, modality: { image: { min: 6, max: 7 }, text: { min: 3, max: 4 }, audio: { min: 3, max: 3 }, video: { min: 5, max: 5 } } },
+    reasoning: { total: 6, difficulty: { easy: 1, medium: 3, hard: 2 }, option_type: { single: 2, multiple: 4 }, modality: { image: { min: 0, max: 1 }, text: { min: 1, max: 1 }, audio: { min: 1, max: 2 }, video: { min: 3, max: 3 } } }
+  };
+  try {
+    const saved = await json('/api/admin/config', { method: 'PUT', headers, body: JSON.stringify({ assessment_rules }) });
+    assert.equal(saved.response.status, 200);
+    assert.equal(saved.body.total_count, 24);
+    assert.deepEqual(saved.body.assessment_rules, assessment_rules);
+    const impossible = structuredClone(assessment_rules);
+    impossible.reasoning.modality.video = { min: 7, max: 7 };
+    assert.equal((await json('/api/admin/config', { method: 'PUT', headers, body: JSON.stringify({ assessment_rules: impossible }) })).response.status, 400);
+  } finally {
+    await json('/api/admin/config', { method: 'PUT', headers, body: JSON.stringify({ combination_counts: original.body.combination_counts }) });
+  }
+});
+
 test('管理员可关闭新作答且不影响已创建答卷，并可重新开放', async () => {
   const statusBefore = await json('/api/assessment/status');
   assert.deepEqual(statusBefore.body, { active: true });
@@ -189,8 +210,8 @@ test('答卷明细CSV导出实际候选情绪、多选答案与对应强度', as
   assert.match(csvText, /"4｜5"/);
   assert.match(csvText, /"多选题"/);
   assert.match(csvText, /"12\.50"/);
-  for (const option of shownOptions) assert.ok(csvText.includes(option), `CSV 应包含实际呈现的候选情绪：${option}`);
-  for (const option of supplementedOptions) assert.ok(csvText.includes(option), `CSV 应包含随机补充项：${option}`);
+  for (const option of shownOptions) assert.ok(csvText.includes(option.replace(/"/g, '""')), `CSV 应包含实际呈现的候选情绪：${option}`);
+  for (const option of supplementedOptions) assert.ok(csvText.includes(option.replace(/"/g, '""')), `CSV 应包含随机补充项：${option}`);
   assert.match(csvText, /平静,又""特别""/);
 
   assert.equal((await json('/api/admin/config', { method: 'PUT', headers: adminHeaders, body: JSON.stringify({ combination_counts: originalConfig.body.combination_counts }) })).response.status, 200);
