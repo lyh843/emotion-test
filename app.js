@@ -1,9 +1,11 @@
 const app = document.querySelector('#app');
 const testCode = new URLSearchParams(location.search).get('test')?.trim().toUpperCase() || 'DEFAULT';
+const participationKey = 'zhijing_participating_test';
 const sessionKey = `zhijing_attempt_${testCode}`;
 const submissionKey = `zhijing_submission_${testCode}`;
 const consentKey = 'zhijing_informed_consent_v2';
 let current = null, questionIndex = 0, changes = 0, collectionActive = null;
+let lockedTestCode = localStorage.getItem(participationKey), testAccessBlocked = false;
 let timedQuestionPosition = null, activeElapsedMs = 0, activeSince = null;
 const icons = { image: '▧', text: '文', audio: '◉', video: '▶' };
 
@@ -78,9 +80,10 @@ function about() {
   }
 }
 async function start() {
+  if(testAccessBlocked)return toast('此浏览器已参加其他测试，不能参加当前测试');
   try {
     if (current) { const attempt = await api(`/api/attempts/${current.id}`); if (attempt.status === 'completed') { current.completed = true; localStorage.setItem(submissionKey, JSON.stringify({ id: current.id, token: current.token, completed: true })); return void (location.hash = 'report'); } current.data = attempt; }
-    else { current = await api('/api/attempts', { method: 'POST', body: JSON.stringify({ test_code: testCode }) }); localStorage.setItem(sessionKey, JSON.stringify(current)); current.data = await api(`/api/attempts/${current.id}`); }
+    else { current = await api('/api/attempts', { method: 'POST', body: JSON.stringify({ test_code: testCode }) }); localStorage.setItem(participationKey,testCode);lockedTestCode=testCode;localStorage.setItem(sessionKey, JSON.stringify(current)); current.data = await api(`/api/attempts/${current.id}`); }
     questionIndex = Math.max(0, current.data.questions.findIndex(q => !q.emotions?.length && !q.skipped)); location.hash = 'assessment';
   } catch (error) {
     if (!current && error.message === '当前题目收集已满') {
@@ -250,9 +253,18 @@ function printReport(r) {
   popup.document.querySelectorAll('.dimension tr').forEach((row, index) => { if (printValues[index] != null) row.children[1].textContent = `${fixed(printValues[index])}%`; });
   setTimeout(() => { popup.focus(); popup.print(); }, 300);
 }
-function route() { ({ home, about, assessment, report, review: reviewPage }[location.hash.slice(1) || 'home'] || home)(); }
+function blockedTestPage(){app.innerHTML=header()+`<main class="content"><section class="card access-blocked" role="alert"><span class="eyebrow">PARTICIPATION LIMIT</span><h1>此浏览器已参加其他测试</h1><p>为保证不同测试的样本相互独立，同一浏览器只能参加其中一个测试。当前链接对应测试 <b>${escapeHtml(testCode)}</b>，但本浏览器已经绑定测试 <b>${escapeHtml(lockedTestCode||'其他测试')}</b>，因此不能开始当前测评。</p><p>如果你认为这是误判，请联系测试管理员处理。</p></section></main>`}
+function route() { if(testAccessBlocked)return blockedTestPage();({ home, about, assessment, report, review: reviewPage }[location.hash.slice(1) || 'home'] || home)(); }
 try { current = JSON.parse(localStorage.getItem(submissionKey)) || JSON.parse(localStorage.getItem(sessionKey)); } catch {}
 async function bootstrap() {
+  if(!lockedTestCode){
+    const savedKey=Object.keys(localStorage).find(key=>key.startsWith('zhijing_attempt_')||key.startsWith('zhijing_submission_'));
+    if(savedKey)lockedTestCode=savedKey.replace(/^zhijing_(?:attempt|submission)_/,'');
+    else if(localStorage.getItem('zhijing_attempt')||localStorage.getItem('zhijing_submission'))lockedTestCode='DEFAULT';
+    if(lockedTestCode)localStorage.setItem(participationKey,lockedTestCode);
+  }
+  testAccessBlocked=!!lockedTestCode&&lockedTestCode!==testCode;
+  if(testAccessBlocked){route();return}
   try { collectionActive = (await api(`/api/assessment/status?test=${encodeURIComponent(testCode)}`)).active; } catch { collectionActive = true; }
   route();
   if (current || collectionActive) showInformedConsent();
