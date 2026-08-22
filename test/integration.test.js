@@ -38,6 +38,13 @@ test('管理员接口需要登录，正确密码可建立会话', async () => {
   assert.match(login.response.headers.get('set-cookie'), /connect\.sid=/);
 });
 
+test('被试端背景图片可以正常加载', async () => {
+  const response = await fetch(base + '/background.png');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /image\/png/);
+  assert.ok(Number(response.headers.get('content-length')) > 100000);
+});
+
 test('测评配置支持模态、选项形式和能力类型的精确组合', async () => {
   const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
   const cookie = login.response.headers.get('set-cookie').split(';')[0];

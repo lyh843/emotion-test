@@ -253,6 +253,11 @@ function printReport(r) {
   popup.document.querySelectorAll('.dimension tr').forEach((row, index) => { if (printValues[index] != null) row.children[1].textContent = `${fixed(printValues[index])}%`; });
   setTimeout(() => { popup.focus(); popup.print(); }, 300);
 }
+home=function landingHome(){
+  const closed=!current&&collectionActive===false,startLabel=closed?'作答已关闭':current?.completed?'查看测评结果':current?'继续测评':'开始测评';
+  app.innerHTML=`<main class="landing-home"><section class="landing-copy"><div class="landing-title"><h1>情绪显影室</h1><p>多模态情绪感知能力测评</p></div><div class="landing-intro"><p>通过图像、文本、语音与视频情境，评估情绪识别和情绪推理能力。<br>全程匿名，完成后即时获得分项反馈。</p></div>${closed?'<div class="collection-closed" role="status"><b>当前题目收集已满</b><span>感谢你的关注，本轮测评暂不再接收新的作答。</span></div>':''}<div class="landing-actions"><a class="landing-btn secondary" href="#about">了解作答方式</a><button class="landing-btn primary" id="start" ${closed?'disabled':''}>${startLabel}</button></div>${current?.completed?'<p class="device-submitted">此浏览器已完成测评，再次进入将直接显示上次结果。</p>':''}<div class="landing-trust"><span>✓ 匿名参与</span><span>✓ 即时报告</span><span>✓ 多模态题目</span></div></section></main>`;
+  if(!closed)document.querySelector('#start').onclick=start;
+};
 function blockedTestPage(){app.innerHTML=header()+`<main class="content"><section class="card access-blocked" role="alert"><span class="eyebrow">PARTICIPATION LIMIT</span><h1>此浏览器已参加其他测试</h1><p>为保证不同测试的样本相互独立，同一浏览器只能参加其中一个测试。当前链接对应测试 <b>${escapeHtml(testCode)}</b>，但本浏览器已经绑定测试 <b>${escapeHtml(lockedTestCode||'其他测试')}</b>，因此不能开始当前测评。</p><p>如果你认为这是误判，请联系测试管理员处理。</p></section></main>`}
 function route() { if(testAccessBlocked)return blockedTestPage();({ home, about, assessment, report, review: reviewPage }[location.hash.slice(1) || 'home'] || home)(); }
 try { current = JSON.parse(localStorage.getItem(submissionKey)) || JSON.parse(localStorage.getItem(sessionKey)); } catch {}
