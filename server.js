@@ -233,7 +233,7 @@ function normalizeAssessmentRules(input){
 }
 
 function selectQuestions(cfg){
-  const pool=db.prepare(`SELECT q.*,m.stored_name,(SELECT COUNT(*) FROM attempt_questions aq WHERE aq.question_id=q.id) appearance_count,(SELECT GROUP_CONCAT(CASE WHEN qc.question_id=q.id THEN qc.conflicting_question_id ELSE qc.question_id END) FROM question_conflicts qc WHERE qc.question_id=q.id OR qc.conflicting_question_id=q.id) conflict_ids FROM questions q LEFT JOIN media_files m ON m.id=q.media_id WHERE q.published=1`).all().map(q=>({...q,conflictIds:new Set(String(q.conflict_ids||'').split(',').filter(Boolean).map(Number)),selectionRank:-Math.log(Math.max(Math.random(),Number.EPSILON))*(Number(q.appearance_count)+1)})).sort((a,b)=>a.selectionRank-b.selectionRank);
+  const pool=db.prepare(`SELECT q.*,m.stored_name,(SELECT COUNT(*) FROM attempt_questions aq WHERE aq.question_id=q.id) appearance_count,(SELECT GROUP_CONCAT(CASE WHEN qc.question_id=q.id THEN qc.conflicting_question_id ELSE qc.question_id END) FROM question_conflicts qc WHERE qc.question_id=q.id OR qc.conflicting_question_id=q.id) conflict_ids FROM questions q LEFT JOIN media_files m ON m.id=q.media_id WHERE q.published=1`).all().map(q=>({...q,conflictIds:new Set(String(q.conflict_ids||'').split(',').filter(Boolean).map(Number)),selectionTie:Math.random()})).sort((a,b)=>a.appearance_count-b.appearance_count||a.selectionTie-b.selectionTie);
   const rules=assessmentRules(cfg);
   if(rules){
     const chosen=[], chosenIds=new Set();
@@ -247,7 +247,7 @@ function selectQuestions(cfg){
         for(const field of ['difficulty','option_type'])for(const key of Object.keys(rule[field]))if((counts[field][key]||0)>rule[field][key]||(counts[field][key]||0)+remaining<rule[field][key])return false;
         for(const key of modalities)if((counts.modality[key]||0)>rule.modality[key].max||(counts.modality[key]||0)+remaining<rule.modality[key].min)return false;
         const available=candidates.filter(question=>!chosenIds.has(question.id)&&!chosen.some(item=>question.conflictIds.has(item.id))&&(counts.difficulty[question.difficulty]||0)<rule.difficulty[question.difficulty]&&(counts.option_type[question.option_type]||0)<rule.option_type[question.option_type]&&(counts.modality[question.modality]||0)<rule.modality[question.modality].max);
-        available.sort((a,b)=>{const need=q=>(rule.difficulty[q.difficulty]-(counts.difficulty[q.difficulty]||0))+(rule.option_type[q.option_type]-(counts.option_type[q.option_type]||0))+(rule.modality[q.modality].min-(counts.modality[q.modality]||0));return need(b)-need(a)||a.selectionRank-b.selectionRank});
+        available.sort((a,b)=>{const need=q=>(rule.difficulty[q.difficulty]-(counts.difficulty[q.difficulty]||0))+(rule.option_type[q.option_type]-(counts.option_type[q.option_type]||0))+(rule.modality[q.modality].min-(counts.modality[q.modality]||0));return need(b)-need(a)||a.appearance_count-b.appearance_count||a.selectionTie-b.selectionTie});
         for(const question of available){chosen.push(question);chosenIds.add(question.id);for(const field of ['difficulty','option_type','modality'])counts[field][question[field]]=(counts[field][question[field]]||0)+1;if(search())return true;for(const field of ['difficulty','option_type','modality'])counts[field][question[field]]--;chosenIds.delete(question.id);chosen.pop()}
         return false;
       }

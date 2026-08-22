@@ -229,7 +229,7 @@ test('非法答案和配额不足被拒绝', async () => {
   assert.deepEqual(incomplete.body.missing_positions, [1, 2, 3, 4, 5]);
 });
 
-test('抽题记录历史入卷次数并用于低频题加权', async () => {
+test('抽题记录历史入卷次数并用于低频题优先排序', async () => {
   const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
   const headers = { Cookie: login.response.headers.get('set-cookie').split(';')[0] };
   const before = await json('/api/admin/questions', { headers });
