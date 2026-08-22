@@ -82,6 +82,7 @@ test('测试批次共享题库但隔离答卷、分析和题目入卷次数', as
   const originalHeaders = { Cookie: cookie, 'X-Assessment-Test': String(original.id) };
   const created = await json('/api/admin/tests', { method: 'POST', headers: originalHeaders, body: JSON.stringify({ name: '第二阶段测试' }) });
   assert.equal(created.response.status, 201);
+  assert.equal(created.body.participant_url, `http://8.138.88.239:3000/?test=${created.body.code}`);
   const newHeaders = { Cookie: cookie, 'X-Assessment-Test': String(created.body.id) };
   const beforeOriginal = await json('/api/admin/questions', { headers: originalHeaders });
   const attempt = await json('/api/attempts', { method: 'POST', body: JSON.stringify({ test_code: created.body.code }) });

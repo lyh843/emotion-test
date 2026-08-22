@@ -21,6 +21,8 @@ npm start
 
 首次启动会自动创建 SQLite 表和初始管理员。务必在公网部署前修改 `SESSION_SECRET` 与 `ADMIN_PASSWORD`。如果未配置，开发环境默认账号为 `admin`、密码为 `admin123!`。
 
+后台复制测试批次的被试链接时，默认使用 `http://8.138.88.239:3000`。如域名或端口变化，可通过环境变量覆盖，例如 `PUBLIC_BASE_URL=https://example.com`。
+
 如需在空题库中生成 5 道演示题，启动时显式设置 `SEED_DEMO_DATA=true`。生产环境不要设置该变量，否则清空题库后重启会再次生成演示题。
 
 报告页支持 OpenAI-compatible 大模型反馈。复制 `.env.example` 为 `.env`，填写 `LLM_API_KEY`、`LLM_BASE_URL` 和 `LLM_MODEL` 后重启服务即可启用；密钥仅由服务端读取。未配置时系统自动使用本地规则反馈。
