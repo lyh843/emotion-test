@@ -96,6 +96,11 @@ const renderQuestionModal = questionModal;
 const renderQuestionPage = questionPage;
 questionPage = async function questionPageWithMoreFilters(query = '') {
   await renderQuestionPage(query);
+  const addQuestion = document.querySelector('#addQuestion'), pageActions = document.createElement('div');
+  pageActions.className = 'question-page-actions';
+  pageActions.innerHTML = '<a class="btn" href="/api/admin/questions.csv">↓ 导出题库</a>';
+  addQuestion.before(pageActions);
+  pageActions.append(addQuestion);
   document.querySelectorAll('.table-card tbody tr').forEach((row,index) => { const question=questions[index],cell=row.children[4];if(cell)cell.textContent=question?.conflict_codes?.join('、') || '—';const titleCell=row.children[0];if(titleCell)titleCell.insertAdjacentHTML('beforeend',`<small>历史入卷 ${question?.appearance_count || 0} 次</small>`); });
   const params = new URLSearchParams(query.replace(/^\?/, '')), status = document.querySelector('#qStatus');
   status.insertAdjacentHTML('beforebegin', '<select id="qOptionType"><option value="">全部选项形式</option><option value="single">单选题</option><option value="multiple">多选题</option></select><select id="qQuestionType"><option value="">全部能力类型</option><option value="recognition">情绪识别</option><option value="reasoning">情绪推理</option></select><select id="qDifficulty"><option value="">全部难度</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option></select>');

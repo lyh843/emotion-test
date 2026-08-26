@@ -159,6 +159,39 @@ test('题库可按选项形式和能力类型组合筛选', async () => {
   assert.deepEqual(titles, [...titles].sort());
 });
 
+test('管理员可导出完整题库信息且不包含素材信息', async () => {
+  assert.equal((await fetch(base + '/api/admin/questions.csv')).status, 401);
+  const login = await json('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'integration-test-password' }) });
+  const headers = { Cookie: login.response.headers.get('set-cookie').split(';')[0] };
+  const listed = await json('/api/admin/questions', { headers });
+  const created = await json('/api/admin/questions', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ modality: 'text', option_type: 'multiple', question_type: 'reasoning', points: 17.5, title: '题库导出,"验证"', context: '=测试情景', prompt: '请选择两种情绪', options: ['快乐', '惊喜', '平静'], correct_emotions: ['快乐', '惊喜'], standard_strengths: [4, 5], emotion_category: '复合积极情绪', difficulty: 'hard', conflict_codes: [listed.body[0].code], published: false })
+  });
+  assert.equal(created.response.status, 201);
+
+  const csv = await fetch(base + '/api/admin/questions.csv', { headers });
+  assert.equal(csv.status, 200);
+  assert.match(csv.headers.get('content-type'), /text\/csv/);
+  assert.match(csv.headers.get('content-disposition'), /filename\*=UTF-8''zhijing-question-bank-/);
+  const bytes = new Uint8Array(await csv.arrayBuffer());
+  assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+  const text = new TextDecoder().decode(bytes);
+  for (const heading of ['题目ID', '题目编号', '素材模态', '选项形式', '能力类型', '题目分值', '题目标题', '情景内容', '作答问题', '候选情绪', '标准情绪', '标准情绪强度', '情绪分类', '难度', '冲突题编号', '发布状态', '当前测试历史入卷次数', '创建时间（北京时间）', '更新时间（北京时间）']) assert.ok(text.includes(`"${heading}"`), `CSV 应包含字段：${heading}`);
+  assert.match(text, /"题库导出,""验证"""/);
+  assert.match(text, /"'=测试情景"/);
+  assert.match(text, /"快乐｜惊喜｜平静"/);
+  assert.match(text, /"快乐｜惊喜"/);
+  assert.match(text, /"4｜5"/);
+  assert.match(text, /"复合积极情绪"/);
+  assert.match(text, /"困难"/);
+  assert.match(text, new RegExp(`"${listed.body[0].code}"`));
+  assert.match(text, /"草稿"/);
+  assert.doesNotMatch(text, /"media_id"|"素材文件"|"素材文件名"|"素材URL"|"MIME类型"|"文件大小"/);
+  assert.equal((await json(`/api/admin/questions/${created.body.id}`, { method: 'DELETE', headers })).response.status, 200);
+});
+
 test('匿名测评可保存、恢复、评分，且不可重复提交', async () => {
   const created = await json('/api/attempts', { method: 'POST', body: '{}' });
   assert.equal(created.response.status, 201);
