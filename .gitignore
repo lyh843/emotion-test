@@ -6,3 +6,13 @@ npm-debug.log*
 docs/
 .vscode/
 online/
+.agents/
+.codex/
+assert/
+test/
+scripts/
+predataAnalysis/
+AGENTS.md
+README.md
+修改.md
+计算公式.*
